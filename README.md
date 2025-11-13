@@ -70,12 +70,20 @@ python build_sqlite.py --xyz_dir ./data/xyz_files --output molecules.db --inchi_
 python service/lmdb_api.py
 ```
 
+You can customize the database path by:
+1. Setting the `MOLECULES_LMDB_PATH` environment variable
+2. Creating a `config.json` file with `{"lmdb_path": "your_database_path.lmdb"}`
+
 ### SQLite Service
 
 ```bash
 # Start the SQLite-based service (port 8001)
 python service/sqlite_api.py
 ```
+
+You can customize the database path by:
+1. Setting the `MOLECULES_DB_PATH` environment variable
+2. Creating a `config.json` file with `{"sqlite_path": "your_database_path.db"}`
 
 ## API Usage
 
