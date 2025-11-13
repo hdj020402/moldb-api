@@ -2,7 +2,7 @@
 SQLite backend implementation for molecular structure data storage.
 """
 import sqlite3
-from typing import Optional
+from typing import Optional, Iterable
 import threading
 
 
@@ -78,6 +78,30 @@ class SQLiteMoleculeStore:
         )
         self.conn.commit()
         return True
+
+    def put_many(self, items):
+        """
+        Store multiple molecule data entries in a single transaction.
+        
+        Args:
+            items: Iterable of (inchi, content) pairs
+            
+        Returns:
+            Number of successfully written entries
+        """
+        count = 0
+        try:
+            for inchi, content in items:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO molecules (inchi, content) VALUES (?, ?)",
+                    (inchi, content)
+                )
+                count += 1
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            raise e
+        return count
 
     def delete(self, inchi: str) -> bool:
         """
