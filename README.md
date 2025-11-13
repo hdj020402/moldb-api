@@ -18,27 +18,39 @@ This project provides a high-performance service for storing and querying molecu
 
 ```
 moldb-api/
-├── data/
-│   └── xyz_files/          # Original XYZ files (InChIKey.xyz)
-├── backend/
-│   ├── __init__.py         # Package init
-│   ├── lmdb.py             # LMDB storage implementation
-│   └── sqlite.py           # SQLite storage implementation
-├── service/
-│   ├── __init__.py         # Package init
-│   ├── lmdb_api.py         # FastAPI service for LMDB backend
-│   └── sqlite_api.py       # FastAPI service for SQLite backend
-├── build_lmdb.py           # Script to build LMDB database
-├── build_sqlite.py         # Script to build SQLite database
+├── config.json             # Configuration file
+├── main.py                 # Main entry point
+├── README.md               # This file
 ├── API_DOCUMENTATION.md    # API documentation
-├── DEVELOPMENT_LOG.md      # Development log
 ├── requirements.txt        # Python dependencies
-└── README.md               # This file
+├── .gitignore              # Git ignore file
+└── src/
+    └── moldb/
+        ├── __init__.py
+        ├── core/           # Core storage implementations
+        │   ├── __init__.py
+        │   ├── lmdb.py     # LMDB storage implementation
+        │   └── sqlite.py   # SQLite storage implementation
+        ├── api/            # API services
+        │   ├── __init__.py
+        │   ├── lmdb.py     # FastAPI service for LMDB backend
+        │   └── sqlite.py   # FastAPI service for SQLite backend
+        ├── builder/        # Database building tools
+        │   ├── __init__.py
+        │   ├── lmdb.py     # Script to build LMDB database
+        │   └── sqlite.py   # Script to build SQLite database
+        └── config/         # Configuration module
+            ├── __init__.py
+            └── config.py   # Configuration implementation
 ```
 
 ## Installation
 
 ```bash
+# Create and activate a virtual environment
+conda create -n moldb-api python=3.12
+conda activate moldb-api
+
 # Install required dependencies
 pip install -r requirements.txt
 ```
@@ -50,16 +62,24 @@ pip install -r requirements.txt
 ```bash
 # Build the LMDB database from XYZ files
 # Note: Requires a CSV file containing InChIKey and InChI columns
-python build_lmdb.py --xyz_dir ./data/xyz_files --output molecules.lmdb --inchi_mapping inchi_mapping.csv --inchikey_column inchikey --inchi_column inchi
+python main.py builder lmdb
 ```
+
+You can customize the build parameters by:
+1. Setting command line arguments: `python main.py builder lmdb --xyz_dir ./data/xyz_files --output molecules.lmdb --inchi_mapping inchi_mapping.csv --inchikey_column inchikey --inchi_column inchi`
+2. Setting parameters in the `config.json` file
 
 ### SQLite Backend
 
 ```bash
 # Build the SQLite database from XYZ files
 # Note: Requires a CSV file containing InChIKey and InChI columns
-python build_sqlite.py --xyz_dir ./data/xyz_files --output molecules.db --inchi_mapping inchi_mapping.csv --inchikey_column inchikey --inchi_column inchi
+python main.py builder sqlite
 ```
+
+You can customize the build parameters by:
+1. Setting command line arguments: `python main.py builder sqlite --xyz_dir ./data/xyz_files --output molecules.db --inchi_mapping inchi_mapping.csv --inchikey_column inchikey --inchi_column inchi`
+2. Setting parameters in the `config.json` file
 
 ## Running the Services
 
@@ -67,23 +87,29 @@ python build_sqlite.py --xyz_dir ./data/xyz_files --output molecules.db --inchi_
 
 ```bash
 # Start the LMDB-based service (port 8000)
-python service/lmdb_api.py
+python main.py api lmdb
 ```
 
-You can customize the database path by:
-1. Setting the `MOLECULES_LMDB_PATH` environment variable
-2. Creating a `config.json` file with `{"lmdb_path": "your_database_path.lmdb"}`
+You can customize the database path and other parameters by:
+1. Setting environment variables:
+   - `MOLECULES_LMDB_PATH` - Database path
+   - `MOLECULES_API_HOST` - Service host
+   - `MOLECULES_LMDB_API_PORT` - Service port
+2. Setting parameters in the `config.json` file
 
 ### SQLite Service
 
 ```bash
 # Start the SQLite-based service (port 8001)
-python service/sqlite_api.py
+python main.py api sqlite
 ```
 
-You can customize the database path by:
-1. Setting the `MOLECULES_DB_PATH` environment variable
-2. Creating a `config.json` file with `{"sqlite_path": "your_database_path.db"}`
+You can customize the database path and other parameters by:
+1. Setting environment variables:
+   - `MOLECULES_DB_PATH` - Database path
+   - `MOLECULES_API_HOST` - Service host
+   - `MOLECULES_SQLITE_API_PORT` - Service port
+2. Setting parameters in the `config.json` file
 
 ## API Usage
 

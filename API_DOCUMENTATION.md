@@ -2,7 +2,7 @@
 
 ## LMDB Backend Service
 
-Base URL: `http://localhost:8000`
+Base URL: `http://localhost:8000` (default, can be customized in config.json)
 
 ### Health Check
 
@@ -86,7 +86,7 @@ Delete molecule data.
 
 ## SQLite Backend Service
 
-Base URL: `http://localhost:8001`
+Base URL: `http://localhost:8001` (default, can be customized in config.json)
 
 ### Health Check
 
