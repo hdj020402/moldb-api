@@ -7,6 +7,7 @@ from typing import Optional
 from backend.sqlite import SQLiteMoleculeStore
 import uvicorn
 import os
+from config import config
 
 # Create the FastAPI app
 app = FastAPI(
@@ -15,8 +16,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Get database path from environment variable or use default
-DB_PATH = os.environ.get("MOLECULES_DB_PATH", "molecules.db")
+# Get database path from configuration
+DB_PATH = config.get_sqlite_path()
 
 # Global store instance
 # In production, you might want to use dependency injection or lifespan events
