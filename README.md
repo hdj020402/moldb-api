@@ -16,7 +16,7 @@ This project provides a high-performance service for storing and querying molecu
 ## Project Structure
 
 ```
-mol-database/
+moldb-api/
 ├── data/
 │   └── xyz_files/          # Original XYZ files (InChIKey.xyz)
 ├── backend/
