@@ -3,32 +3,40 @@ LMDB backend implementation for molecular structure data storage.
 """
 import os
 import lmdb
-from typing import Optional
+from typing import Optional, Iterable
 
 
 class LMDBMoleculeStore:
     """LMDB-based storage for molecular structure data."""
-    
-    def __init__(self, db_path: str, map_size: int = 30 * 1024**3):  # 30GB
+
+    def __init__(
+        self,
+        db_path: str,
+        map_size: int = 30 * 1024**3,  # 30GB
+        sync: bool = True,
+        writemap: bool = False,
+    ):
         """
         Initialize LMDB storage.
-        
+
         Args:
             db_path: Path to the LMDB database file
             map_size: Maximum size of the database (default: 30GB)
+            sync: If False, use MDB_NOSYNC for faster writes (risk of data loss on crash)
+            writemap: If True, use MDB_WRITEMAP (faster on some systems)
         """
         self.db_path = db_path
         self.map_size = map_size
+
         self.env = lmdb.open(
             self.db_path,
             map_size=self.map_size,
-            max_dbs=0,
             subdir=False,
             lock=True,
-            sync=True,
-            metasync=True,
+            sync=sync,
+            metasync=sync,
             mode=0o644,
-            writemap=False,
+            writemap=writemap,
             meminit=False,
         )
 
@@ -59,6 +67,23 @@ class LMDBMoleculeStore:
         """
         with self.env.begin(write=True) as txn:
             return txn.put(inchi.encode(), content.encode())
+
+    def put_many(self, items: Iterable[tuple[str, str]]) -> int:
+        """
+        Efficiently store many molecules in a single transaction.
+
+        Args:
+            items: Iterable of (inchi, content) pairs
+
+        Returns:
+            Number of successfully written entries
+        """
+        count = 0
+        with self.env.begin(write=True) as txn:
+            for inchi, content in items:
+                txn.put(inchi.encode("utf-8"), content.encode("utf-8"))
+                count += 1
+        return count
 
     def delete(self, inchi: str) -> bool:
         """
