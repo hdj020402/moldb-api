@@ -3,9 +3,10 @@ Script to build SQLite database from XYZ files.
 """
 import os
 import argparse
-from backend.sqlite import SQLiteMoleculeStore
+from ..core.sqlite import SQLiteMoleculeStore
 import pandas as pd
 import time
+from ..config.config import config
 
 def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, inchikey_column: str, inchi_column: str):
     """
@@ -81,13 +82,18 @@ def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, inchikey_colum
     
     print(f"Done. Total: {count} files, {mapped_count} InChIs stored.")
 
-if __name__ == "__main__":
+def run_build_sqlite():
+    """Run the SQLite build process with configuration support."""
     parser = argparse.ArgumentParser(description="Build SQLite database from XYZ files")
-    parser.add_argument("--xyz_dir", required=True, help="Directory containing XYZ files (named by InChIKey)")
-    parser.add_argument("--output", default="molecules.db", help="Output SQLite database path")
-    parser.add_argument("--inchi_mapping", required=True, help="CSV file with InChIKey to InChI mapping")
-    parser.add_argument("--inchikey_column", required=True, help="Name of the InChIKey column in the CSV file")
-    parser.add_argument("--inchi_column", required=True, help="Name of the InChI column in the CSV file")
+    parser.add_argument("--xyz_dir", default=config.get_sqlite_xyz_dir(), help="Directory containing XYZ files (named by InChIKey)")
+    parser.add_argument("--output", default=config.get_sqlite_path(), help="Output SQLite database path")
+    parser.add_argument("--inchi_mapping", default=config.get_sqlite_inchi_mapping(), help="CSV file with InChIKey to InChI mapping")
+    parser.add_argument("--inchikey_column", default=config.get_inchikey_column(), help="Name of the InChIKey column in the CSV file")
+    parser.add_argument("--inchi_column", default=config.get_inchi_column(), help="Name of the InChI column in the CSV file")
     
     args = parser.parse_args()
+        
     main(args.xyz_dir, args.output, args.inchi_mapping, args.inchikey_column, args.inchi_column)
+
+if __name__ == "__main__":
+    run_build_sqlite()

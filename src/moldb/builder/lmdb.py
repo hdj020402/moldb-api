@@ -4,9 +4,9 @@ Script to build LMDB database from XYZ files.
 import time
 import os
 import argparse
-from backend.lmdb import LMDBMoleculeStore
+from ..core.lmdb import LMDBMoleculeStore
 import pandas as pd
-
+from ..config.config import config
 
 def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, 
          inchikey_column: str, inchi_column: str, map_size: int,
@@ -95,15 +95,20 @@ def main(xyz_dir: str, output_path: str, inchi_mapping_file: str,
           f"({final_speed:.1f} entries/sec)")
     store.close()
 
-if __name__ == "__main__":
+def run_build_lmdb():
+    """Run the LMDB build process with configuration support."""
     parser = argparse.ArgumentParser(description="Build LMDB database from XYZ files")
-    parser.add_argument("--xyz_dir", required=True, help="Directory containing XYZ files (named by InChIKey)")
-    parser.add_argument("--output", default="molecules.lmdb", help="Output LMDB database path")
-    parser.add_argument("--inchi_mapping", required=True, help="CSV file with InChIKey to InChI mapping")
-    parser.add_argument("--inchikey_column", required=True, help="Name of the InChIKey column in the CSV file")
-    parser.add_argument("--inchi_column", required=True, help="Name of the InChI column in the CSV file")
+    parser.add_argument("--xyz_dir", default=config.get_lmdb_xyz_dir(), help="Directory containing XYZ files (named by InChIKey)")
+    parser.add_argument("--output", default=config.get_lmdb_path(), help="Output LMDB database path")
+    parser.add_argument("--inchi_mapping", default=config.get_lmdb_inchi_mapping(), help="CSV file with InChIKey to InChI mapping")
+    parser.add_argument("--inchikey_column", default=config.get_inchikey_column(), help="Name of the InChIKey column in the CSV file")
+    parser.add_argument("--inchi_column", default=config.get_inchi_column(), help="Name of the InChI column in the CSV file")
     parser.add_argument("--map_size", type=int, default=30 * 1024**3, help="Maximum size of the database in bytes (default: 30GB)")
     parser.add_argument("--batch_size", type=int, default=50000, help="Number of entries per write transaction")
     
     args = parser.parse_args()
-    main(args.xyz_dir, args.output, args.inchi_mapping, args.inchikey_column, args.inchi_column, args.map_size)
+        
+    main(args.xyz_dir, args.output, args.inchi_mapping, args.inchikey_column, args.inchi_column, args.map_size, args.batch_size)
+
+if __name__ == "__main__":
+    run_build_lmdb()
