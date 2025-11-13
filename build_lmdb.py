@@ -1,14 +1,18 @@
 """
 Script to build LMDB database from XYZ files.
 """
+import time
 import os
 import argparse
 from backend.lmdb import LMDBMoleculeStore
 import pandas as pd
 
-def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, inchikey_column: str, inchi_column: str, map_size: int):
+
+def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, 
+         inchikey_column: str, inchi_column: str, map_size: int,
+         batch_size: int = 50000):
     """
-    Build LMDB database from XYZ files.
+    Build LMDB database from XYZ files with write speed monitoring.
     
     Args:
         xyz_dir: Directory containing XYZ files (named by InChIKey)
@@ -17,9 +21,10 @@ def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, inchikey_colum
         inchikey_column: Name of the InChIKey column in the CSV file
         inchi_column: Name of the InChI column in the CSV file
         map_size: Maximum size of the database in bytes
+        batch_size: Number of entries to write in each transaction
     """
-    # Initialize store
-    store = LMDBMoleculeStore(output_path, map_size=map_size)
+    # Initialize store — disable sync for faster writes (optional but recommended for bulk load)
+    store = LMDBMoleculeStore(output_path, map_size=map_size, sync=False, writemap=True)
     
     # Load InChI mapping
     inchikey_to_inchi = {}
@@ -30,42 +35,64 @@ def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, inchikey_colum
             inchikey = row[inchikey_column]
             inchi = row[inchi_column]
             inchikey_to_inchi[inchikey] = inchi
-    
-    # Process XYZ files
-    print(f"Processing XYZ files from {xyz_dir}...")
-    count = 0
-    mapped_count = 0
-    
-    for filename in os.listdir(xyz_dir):
-        if not filename.endswith(".xyz"):
-            continue
-            
+
+    # Get list of XYZ files upfront for progress estimation
+    all_xyz_files = [f for f in os.listdir(xyz_dir) if f.endswith(".xyz")]
+    total_files = len(all_xyz_files)
+    print(f"Found {total_files} XYZ files in {xyz_dir}")
+
+    entries = []
+    processed = 0
+    stored = 0
+    start_time = time.time()
+
+    for filename in all_xyz_files:
         inchikey = filename[:-4]  # remove .xyz
-        filepath = os.path.join(xyz_dir, filename)
-        
-        # Get InChI from mapping
         inchi = inchikey_to_inchi.get(inchikey)
         if not inchi:
-            print(f"Warning: No InChI mapping found for {inchikey}, skipping...")
             continue
-        
-        # Read file content
+
+        filepath = os.path.join(xyz_dir, filename)
         try:
             with open(filepath, "r") as f:
                 content = f.read()
         except Exception as e:
             print(f"Error reading {filepath}: {e}")
             continue
-        
-        # Store by InChI
-        store.put(inchi, content)
-        mapped_count += 1
-        
-        count += 1
-        if count % 10000 == 0:
-            print(f"Processed {count} files...")
-    
-    print(f"Done. Total: {count} files, {mapped_count} InChIs stored.")
+
+        entries.append((inchi, content))
+        processed += 1
+
+        # Batch commit
+        if len(entries) >= batch_size:
+            batch_start = time.time()
+            written = store.put_many(entries)
+            batch_time = time.time() - batch_start
+            stored += written
+            entries = []
+
+            # Speed stats
+            elapsed = time.time() - start_time
+            speed = stored / elapsed if elapsed > 0 else 0
+            print(f"[{elapsed:.1f}s] Processed {processed}/{total_files}, "
+                  f"Stored {stored}, "
+                  f"Speed: {speed:.1f} entries/sec, "
+                  f"Last batch: {written} in {batch_time:.2f}s")
+
+    # Final batch
+    if entries:
+        batch_start = time.time()
+        written = store.put_many(entries)
+        stored += written
+        batch_time = time.time() - batch_start
+        elapsed = time.time() - start_time
+        speed = stored / elapsed if elapsed > 0 else 0
+        print(f"[{elapsed:.1f}s] Final batch: {written} entries in {batch_time:.2f}s")
+
+    total_time = time.time() - start_time
+    final_speed = stored / total_time if total_time > 0 else 0
+    print(f"\n✅ Done. Total: {processed} files processed, {stored} stored in {total_time:.2f}s "
+          f"({final_speed:.1f} entries/sec)")
     store.close()
 
 if __name__ == "__main__":
@@ -76,6 +103,7 @@ if __name__ == "__main__":
     parser.add_argument("--inchikey_column", required=True, help="Name of the InChIKey column in the CSV file")
     parser.add_argument("--inchi_column", required=True, help="Name of the InChI column in the CSV file")
     parser.add_argument("--map_size", type=int, default=30 * 1024**3, help="Maximum size of the database in bytes (default: 30GB)")
+    parser.add_argument("--batch_size", type=int, default=50000, help="Number of entries per write transaction")
     
     args = parser.parse_args()
     main(args.xyz_dir, args.output, args.inchi_mapping, args.inchikey_column, args.inchi_column, args.map_size)
