@@ -132,6 +132,7 @@ dmypy.json
 *.sqlite
 
 # LMDB database files
+*.lmdb
 *.mdb
 *.lock
 
