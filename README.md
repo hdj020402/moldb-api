@@ -12,6 +12,7 @@ This project provides a high-performance service for storing and querying molecu
 - FastAPI-based REST API for querying and updating data
 - Support for InChI-based queries only
 - Extensible design for future enhancements
+- Batch insert support with `put_many` method for improved write performance
 
 ## Project Structure
 
