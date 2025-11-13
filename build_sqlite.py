@@ -5,6 +5,7 @@ import os
 import argparse
 from backend.sqlite import SQLiteMoleculeStore
 import pandas as pd
+import time
 
 def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, inchikey_column: str, inchi_column: str):
     """
@@ -31,10 +32,12 @@ def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, inchikey_colum
             inchi = row[inchi_column]
             inchikey_to_inchi[inchikey] = inchi
     
-    # Process XYZ files
+    # Process XYZ files with batch support
     print(f"Processing XYZ files from {xyz_dir}...")
+    entries = []
     count = 0
     mapped_count = 0
+    batch_size = 10000  # Commit every 10000 entries
     
     for filename in os.listdir(xyz_dir):
         if not filename.endswith(".xyz"):
@@ -57,13 +60,24 @@ def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, inchikey_colum
             print(f"Error reading {filepath}: {e}")
             continue
         
-        # Store by InChI
-        store.put(inchi, content)
+        # Add to batch
+        entries.append((inchi, content))
         mapped_count += 1
+        
+        # Batch commit
+        if len(entries) >= batch_size:
+            written = store.put_many(entries)
+            entries = []
+            print(f"Processed {count} files, stored {written} entries in batch")
         
         count += 1
         if count % 10000 == 0:
             print(f"Processed {count} files...")
+    
+    # Final batch
+    if entries:
+        written = store.put_many(entries)
+        print(f"Final batch: stored {written} entries")
     
     print(f"Done. Total: {count} files, {mapped_count} InChIs stored.")
 
