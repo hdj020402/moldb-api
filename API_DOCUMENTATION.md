@@ -24,7 +24,36 @@ Returns service status information.
 Retrieve molecule data by InChI.
 
 **Path Parameters:**
-- `inchi` (string, required): InChI identifier
+- `inchi` (string, required): InChI identifier (URL encoded)
+
+**Note:**
+InChI identifiers contain special characters that must be URL encoded when used in HTTP requests. 
+For example, `InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1` should be encoded as `InChI%3D1S/C3H3N/c1-3-2-4%281%293/h3H%2C1H2/t3-%2C4%3F/m0/s1`.
+
+**URL Encoding Examples:**
+
+Python:
+```python
+import urllib.parse
+inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
+encoded_inchi = urllib.parse.quote(inchi, safe='')
+# Result: InChI%3D1S/C3H3N/c1-3-2-4%281%293/h3H%2C1H2/t3-%2C4%3F/m0/s1
+```
+
+JavaScript:
+```javascript
+const inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1";
+const encodedInchi = encodeURIComponent(inchi);
+// Result: InChI%3D1S%2FC3H3N%2Fc1-3-2-4(1)3%2Fh3H%2C1H2%2Ft3-%2C4%3F%2Fm0%2Fs1
+```
+
+cURL:
+```bash
+# Using Python to encode
+inchi="InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
+encoded_inchi=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$inchi', safe=''))")
+curl "http://localhost:8000/molecule/$encoded_inchi"
+```
 
 **Response (200):**
 ```json
@@ -108,7 +137,36 @@ Returns service status information.
 Retrieve molecule data by InChI.
 
 **Path Parameters:**
-- `inchi` (string, required): InChI identifier
+- `inchi` (string, required): InChI identifier (URL encoded)
+
+**Note:**
+InChI identifiers contain special characters that must be URL encoded when used in HTTP requests. 
+For example, `InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1` should be encoded as `InChI%3D1S/C3H3N/c1-3-2-4%281%293/h3H%2C1H2/t3-%2C4%3F/m0/s1`.
+
+**URL Encoding Examples:**
+
+Python:
+```python
+import urllib.parse
+inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
+encoded_inchi = urllib.parse.quote(inchi, safe='')
+# Result: InChI%3D1S/C3H3N/c1-3-2-4%281%293/h3H%2C1H2/t3-%2C4%3F/m0/s1
+```
+
+JavaScript:
+```javascript
+const inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1";
+const encodedInchi = encodeURIComponent(inchi);
+// Result: InChI%3D1S%2FC3H3N%2Fc1-3-2-4(1)3%2Fh3H%2C1H2%2Ft3-%2C4%3F%2Fm0%2Fs1
+```
+
+cURL:
+```bash
+# Using Python to encode
+inchi="InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
+encoded_inchi=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$inchi', safe=''))")
+curl "http://localhost:8000/molecule/$encoded_inchi"
+```
 
 **Response (200):**
 ```json
