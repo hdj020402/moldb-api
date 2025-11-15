@@ -9,10 +9,10 @@ This project provides a high-performance service for storing and querying molecu
 
 - High-performance random access to molecular data
 - Support for 2 million+ XYZ files
-- FastAPI-based REST API for querying and updating data
+- FastAPI-based REST API for querying data (read-only)
 - Support for InChI-based queries only
 - Extensible design for future enhancements
-- Batch insert support with `put_many` method for improved write performance
+- Batch insert support with `put_many` method for improved write performance (builder only)
 
 ## Project Structure
 
@@ -39,9 +39,12 @@ moldb-api/
         │   ├── __init__.py
         │   ├── lmdb.py     # Script to build LMDB database
         │   └── sqlite.py   # Script to build SQLite database
-        └── config/         # Configuration module
+        ├── config/         # Configuration module
+        │   ├── __init__.py
+        │   └── config.py   # Configuration implementation
+        └── util/           # Utility functions
             ├── __init__.py
-            └── config.py   # Configuration implementation
+            └── query_molecule.py  # Helper function to query molecule data
 ```
 
 ## Installation
@@ -123,26 +126,17 @@ curl http://localhost:8000/molecule/InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
 curl http://localhost:8001/molecule/InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
 ```
 
-### Add/Update Molecule Data
+### Using the query_molecule helper function
 
-```bash
-# LMDB service
-curl -X POST http://localhost:8000/molecule \
-  -H "Content-Type: application/json" \
-  -d '{"inchi":"InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3","content":"3\n\nC 0 0 0\nH 1 0 0\nH -1 0 0"}'
+Python:
+```python
+from moldb.util.query_molecule import query_molecule
 
-# SQLite service
-curl -X POST http://localhost:8001/molecule \
-  -H "Content-Type: application/json" \
-  -d '{"inchi":"InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3","content":"3\n\nC 0 0 0\nH 1 0 0\nH -1 0 0"}'
-```
+# Query molecule data (automatically handles URL encoding)
+data = query_molecule("InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3")
 
-### Delete Molecule Data
-
-```bash
-# LMDB service
-curl -X DELETE http://localhost:8000/molecule/InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
-
-# SQLite service
-curl -X DELETE http://localhost:8001/molecule/InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
+if data:
+    print(f"Content: {data['content']}")
+else:
+    print("Molecule not found")
 ```
