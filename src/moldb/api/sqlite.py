@@ -25,11 +25,6 @@ DB_PATH = config.get_sqlite_path()
 STORE = SQLiteMoleculeStore(DB_PATH)
 STORE.init_db()
 
-class MoleculeRequest(BaseModel):
-    """Request model for storing molecule data."""
-    inchi: str
-    content: str
-
 class MoleculeResponse(BaseModel):
     """Response model for molecule data."""
     inchi: str
@@ -60,44 +55,6 @@ async def get_molecule_by_inchi(inchi: str):
     if content is None:
         raise HTTPException(status_code=404, detail="Molecule not found")
     return {"inchi": decoded_inchi, "content": content}
-
-@app.post("/molecule", response_model=dict)
-async def add_molecule(req: MoleculeRequest):
-    """
-    Add or update molecule data.
-    
-    Args:
-        req: Molecule data request
-        
-    Returns:
-        Success status
-        
-    Raises:
-        HTTPException: If failed to store molecule
-    """
-    STORE.put(req.inchi, req.content)
-    return {"status": "success", "message": "Molecule data stored successfully"}
-
-@app.delete("/molecule/{inchi:path}", response_model=dict)
-async def delete_molecule(inchi: str):
-    """
-    Delete molecule data.
-    
-    Args:
-        inchi: InChI identifier (URL encoded)
-        
-    Returns:
-        Deletion status
-        
-    Raises:
-        HTTPException: If molecule not found or delete failed
-    """
-    # URL decode the InChI parameter
-    decoded_inchi = urllib.parse.unquote(inchi)
-    success = STORE.delete(decoded_inchi)
-    if not success:
-        raise HTTPException(status_code=404, detail="Molecule not found or delete failed")
-    return {"status": "deleted", "message": "Molecule data deleted successfully"}
 
 def run_sqlite_api():
     """Run the SQLite API service."""
