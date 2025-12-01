@@ -3,7 +3,6 @@ FastAPI service for LMDB-based molecular structure data storage.
 """
 from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
-from typing import Optional
 from ..core.lmdb import LMDBMoleculeStore
 import uvicorn
 import os
@@ -28,6 +27,14 @@ class MoleculeResponse(BaseModel):
     """Response model for molecule data."""
     inchi: str
     content: str
+
+class BatchMoleculeRequest(BaseModel):
+    """Request model for batch molecule queries."""
+    inchis: list[str]
+
+class BatchMoleculeResponse(BaseModel):
+    """Response model for batch molecule queries."""
+    results: list[MoleculeResponse]
 
 @app.get("/")
 async def root():
@@ -54,6 +61,30 @@ async def get_molecule_by_inchi(inchi: str):
     if content is None:
         raise HTTPException(status_code=404, detail="Molecule not found")
     return {"inchi": decoded_inchi, "content": content}
+
+@app.post("/molecules/batch", response_model=dict[str, str])
+async def get_molecules_batch(request: BatchMoleculeRequest):
+    """
+    Retrieve multiple molecule data by InChI in a single request.
+    
+    Args:
+        request: Batch request containing a list of InChI identifiers
+        
+    Returns:
+        Dictionary mapping InChI to content for found molecules
+    """
+    # URL decode all InChI identifiers
+    decoded_inchis = [urllib.parse.unquote(inchi) for inchi in request.inchis]
+    
+    # Get all results from the store
+    results = STORE.get_many_by_inchi(decoded_inchis)
+    
+    # Format the response as a dictionary, only including found molecules
+    response = {}
+    for inchi, content in results:
+        response[inchi] = content
+    
+    return response
 
 def run_lmdb_api():
     """Run the LMDB API service."""
