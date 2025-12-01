@@ -1,11 +1,11 @@
 """
 FastAPI service for LMDB-based molecular structure data storage.
 """
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from ..core.lmdb import LMDBMoleculeStore
 import uvicorn
-import os
+from typing import Optional
 from ..config.config import config
 import urllib.parse
 
@@ -62,7 +62,7 @@ async def get_molecule_by_inchi(inchi: str):
         raise HTTPException(status_code=404, detail="Molecule not found")
     return {"inchi": decoded_inchi, "content": content}
 
-@app.post("/molecules/batch", response_model=dict[str, str])
+@app.post("/molecules/batch", response_model=dict[str, Optional[str]])
 async def get_molecules_batch(request: BatchMoleculeRequest):
     """
     Retrieve multiple molecule data by InChI in a single request.
@@ -71,18 +71,27 @@ async def get_molecules_batch(request: BatchMoleculeRequest):
         request: Batch request containing a list of InChI identifiers
         
     Returns:
-        Dictionary mapping InChI to content for found molecules
+        Dictionary mapping InChI to content for found molecules, with None for not found
     """
-    # URL decode all InChI identifiers
-    decoded_inchis = [urllib.parse.unquote(inchi) for inchi in request.inchis]
-    
-    # Get all results from the store
-    results = STORE.get_many_by_inchi(decoded_inchis)
-    
-    # Format the response as a dictionary, only including found molecules
     response = {}
-    for inchi, content in results:
-        response[inchi] = content
+    
+    try:
+        # URL decode all InChI identifiers with error handling
+        decoded_inchis = []
+        for inchi in request.inchis:
+            decoded_inchi = urllib.parse.unquote(inchi)
+            decoded_inchis.append(decoded_inchi)
+        
+        # Get all results from the store
+        results = STORE.get_many_by_inchi(decoded_inchis)
+        
+        # Format the response as a dictionary, including all requested InChIs
+        for inchi, content in results:
+            response[inchi] = content  # Include even if content is None
+    except Exception as e:
+        # Log the error but return empty dict instead of throwing error
+        print(f"Error in get_molecules_batch: {e}")
+        return {}
     
     return response
 
