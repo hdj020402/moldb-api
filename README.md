@@ -162,10 +162,13 @@ Python:
 from moldb.util.query_molecule import query_molecules_batch
 
 # Query multiple molecules in a single request (automatically handles URL encoding)
-inchis = ["InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3", "InChI=1S/H2O/h1H2"]
+inchis = ["InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3", "InChI=1S/H2O/h1H2", "InChI=1S/INVALID"]
 results = query_molecules_batch(inchis)
 
 for inchi, content in results.items():
-    print(f"Found: {inchi}")
-    print(f"Content: {content[:50]}...")
+    if content is not None:
+        print(f"Found: {inchi}")
+        print(f"Content: {content[:50]}...")
+    else:
+        print(f"Not found: {inchi}")
 ```

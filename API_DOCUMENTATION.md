@@ -90,7 +90,8 @@ The helper function `query_molecules_batch` handles encoding automatically.
 ```json
 {
   "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3": "Molecule data content...",
-  "InChI=1S/H2O/h1H2": "Molecule data content..."
+  "InChI=1S/H2O/h1H2": "Molecule data content...",
+  "InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H": null
 }
 ```
 
