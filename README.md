@@ -126,6 +126,20 @@ curl http://localhost:8000/molecule/InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
 curl http://localhost:8001/molecule/InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
 ```
 
+### Batch Query Multiple Molecules
+
+```bash
+# LMDB service
+curl -X POST http://localhost:8000/molecules/batch \
+  -H "Content-Type: application/json" \
+  -d '{"inchis": ["InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3", "InChI=1S/H2O/h1H2"]}'
+
+# SQLite service
+curl -X POST http://localhost:8001/molecules/batch \
+  -H "Content-Type: application/json" \
+  -d '{"inchis": ["InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3", "InChI=1S/H2O/h1H2"]}'
+```
+
 ### Using the query_molecule helper function
 
 Python:
@@ -139,4 +153,19 @@ if data:
     print(f"Content: {data['content']}")
 else:
     print("Molecule not found")
+```
+
+### Using the query_molecules_batch helper function
+
+Python:
+```python
+from moldb.util.query_molecule import query_molecules_batch
+
+# Query multiple molecules in a single request (automatically handles URL encoding)
+inchis = ["InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3", "InChI=1S/H2O/h1H2"]
+results = query_molecules_batch(inchis)
+
+for inchi, content in results.items():
+    print(f"Found: {inchi}")
+    print(f"Content: {content[:50]}...")
 ```

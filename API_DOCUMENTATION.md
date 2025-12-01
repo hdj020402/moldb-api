@@ -66,6 +66,37 @@ curl "http://localhost:8000/molecule/$encoded_inchi"
 **Error Responses:**
 - 404: Molecule not found
 
+### Batch Query Molecules by InChI
+
+**POST /molecules/batch**
+
+Retrieve multiple molecule data by InChI in a single request.
+
+**Request Body:**
+```json
+{
+  "inchis": [
+    "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3",
+    "InChI=1S/H2O/h1H2"
+  ]
+}
+```
+
+**Note:**
+InChI identifiers should be properly URL encoded when sent in the request body. 
+The helper function `query_molecules_batch` handles encoding automatically.
+
+**Response (200):**
+```json
+{
+  "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3": "Molecule data content...",
+  "InChI=1S/H2O/h1H2": "Molecule data content..."
+}
+```
+
+**Response (422):**
+- Validation error if the request body format is invalid
+
 ---
 
 ## SQLite Backend Service
