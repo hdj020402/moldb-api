@@ -2,7 +2,7 @@
 SQLite backend implementation for molecular structure data storage.
 """
 import sqlite3
-from typing import Optional, Iterable
+from typing import Optional
 import threading
 
 
@@ -27,6 +27,33 @@ class SQLiteMoleculeStore:
             self.local.conn.execute("PRAGMA journal_mode=WAL;")
             self.local.conn.execute("PRAGMA synchronous=NORMAL;")
         return self.local.conn
+
+    def get_many_by_inchi(self, inchis: list[str]) -> list[tuple[str, Optional[str]]]:
+        """
+        Retrieve multiple molecule data by InChI.
+        
+        Args:
+            inchis: List of InChI identifiers
+            
+        Returns:
+            List of (inchi, content) tuples, where content is None if not found
+        """
+        if not inchis:
+            return []
+            
+        # Create placeholders for the SQL query
+        placeholders = ','.join('?' * len(inchis))
+        query = f"SELECT inchi, content FROM molecules WHERE inchi IN ({placeholders})"
+        
+        # Execute query
+        cur = self.conn.execute(query, inchis)
+        results = cur.fetchall()
+        
+        # Create a dictionary for quick lookup
+        result_dict = {row[0]: row[1] for row in results}
+        
+        # Return results in the same order as input
+        return [(inchi, result_dict.get(inchi)) for inchi in inchis]
 
     def init_db(self):
         """Initialize the database schema."""

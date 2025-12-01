@@ -54,6 +54,24 @@ class LMDBMoleculeStore:
             data = txn.get(inchi.encode())
             return data.decode() if data else None
 
+    def get_many_by_inchi(self, inchis: list[str]) -> list[tuple[str, Optional[str]]]:
+        """
+        Retrieve multiple molecule data by InChI in a single transaction.
+        
+        Args:
+            inchis: List of InChI identifiers
+            
+        Returns:
+            List of (inchi, content) tuples, where content is None if not found
+        """
+        results = []
+        with self.env.begin() as txn:
+            for inchi in inchis:
+                data = txn.get(inchi.encode())
+                content = data.decode() if data else None
+                results.append((inchi, content))
+        return results
+
     def put(self, inchi: str, content: str) -> bool:
         """
         Store molecule data.
