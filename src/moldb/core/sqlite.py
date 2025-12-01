@@ -40,20 +40,37 @@ class SQLiteMoleculeStore:
         """
         if not inchis:
             return []
+        
+        # Filter out any potentially problematic InChI strings
+        safe_inchis = []
+        for inchi in inchis:
+            try:
+                # Basic check for valid InChI format
+                if inchi and isinstance(inchi, str):
+                    safe_inchis.append(inchi)
+            except Exception:
+                continue  # Skip invalid entries
+        
+        if not safe_inchis:
+            return []
+        
+        try:
+            # Create placeholders for the SQL query
+            placeholders = ','.join('?' * len(safe_inchis))
+            query = f"SELECT inchi, content FROM molecules WHERE inchi IN ({placeholders})"
             
-        # Create placeholders for the SQL query
-        placeholders = ','.join('?' * len(inchis))
-        query = f"SELECT inchi, content FROM molecules WHERE inchi IN ({placeholders})"
-        
-        # Execute query
-        cur = self.conn.execute(query, inchis)
-        results = cur.fetchall()
-        
-        # Create a dictionary for quick lookup
-        result_dict = {row[0]: row[1] for row in results}
-        
-        # Return results in the same order as input
-        return [(inchi, result_dict.get(inchi)) for inchi in inchis]
+            # Execute query
+            cur = self.conn.execute(query, safe_inchis)
+            results = cur.fetchall()
+            
+            # Create a dictionary for quick lookup
+            result_dict = {row[0]: row[1] for row in results}
+            
+            # Return results in the same order as input, including None for missing entries
+            return [(inchi, result_dict.get(inchi)) for inchi in safe_inchis]
+        except Exception:
+            # If there's a database error, return empty results for all requested InChIs
+            return [(inchi, None) for inchi in safe_inchis]
 
     def init_db(self):
         """Initialize the database schema."""
