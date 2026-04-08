@@ -1,8 +1,20 @@
 # API Documentation
 
+## Important Note
+
+**This database requires non-standard (Fixed-H) InChI** to distinguish tautomers.
+
+**Format rules**:
+- `InChI=1S/...` - Standard InChI (cannot have `/f/h` layer)
+- `InChI=1/...` - Non-standard InChI (may have `/f/h` if molecule has ambiguous hydrogens)
+
+Standard InChI treats tautomers as equivalent, which would incorrectly merge different molecular structures. Non-standard InChI with Fixed-H layer specifies exact hydrogen positions.
+
+---
+
 ## LMDB Backend Service
 
-Base URL: `http://localhost:8000` (default, can be customized in config.json)
+Base URL: `http://localhost:8000` (default)
 
 ### Health Check
 
@@ -13,7 +25,8 @@ Returns service status information.
 **Response:**
 ```json
 {
-  "message": "moldb-api - LMDB Backend is running"
+  "message": "moldb-api - LMDB Backend is running",
+  "version": "2.0.0"
 }
 ```
 
@@ -21,36 +34,27 @@ Returns service status information.
 
 **GET /molecule/{inchi}**
 
-Retrieve molecule data by InChI.
+Retrieve all conformers for a molecule by Fixed-H InChI.
 
 **Path Parameters:**
-- `inchi` (string, required): InChI identifier (URL encoded)
+- `inchi` (string, required): Fixed-H InChI identifier (URL encoded)
 
 **Note:**
-InChI identifiers contain special characters that must be URL encoded when used in HTTP requests. 
-For example, `InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1` should be encoded as `InChI%3D1S/C3H3N/c1-3-2-4%281%293/h3H%2C1H2/t3-%2C4%3F/m0/s1`.
+InChI identifiers contain special characters that must be URL encoded when used in HTTP requests.
 
 **URL Encoding Examples:**
 
 Python:
 ```python
 import urllib.parse
-inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
+inchi = "InChI=1/H2O/h1H2"  # non-standard (Fixed-H) InChI
 encoded_inchi = urllib.parse.quote(inchi, safe='')
-# Result: InChI%3D1S/C3H3N/c1-3-2-4%281%293/h3H%2C1H2/t3-%2C4%3F/m0/s1
-```
-
-JavaScript:
-```javascript
-const inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1";
-const encodedInchi = encodeURIComponent(inchi);
-// Result: InChI%3D1S%2FC3H3N%2Fc1-3-2-4(1)3%2Fh3H%2C1H2%2Ft3-%2C4%3F%2Fm0%2Fs1
 ```
 
 cURL:
 ```bash
-# Using Python to encode
-inchi="InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
+# URL encode the InChI before sending
+inchi="InChI=1/H2O/h1H2"
 encoded_inchi=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$inchi', safe=''))")
 curl "http://localhost:8000/molecule/$encoded_inchi"
 ```
@@ -58,62 +62,65 @@ curl "http://localhost:8000/molecule/$encoded_inchi"
 **Response (200):**
 ```json
 {
-  "inchi": "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3",
-  "content": "Molecule data content..."
+  "inchi": "InChI=1/H2O/h1H2",
+  "count": 2,
+  "conformers": [
+    "3\n\nO    0.000  0.000  0.000\nH    0.757  0.586  0.000\nH   -0.757  0.586  0.000",
+    "3\n\nO    0.001  0.001  0.001\nH    0.758  0.587  0.001\nH   -0.756  0.587  0.001"
+  ]
 }
 ```
 
 **Error Responses:**
 - 404: Molecule not found
 
-### Batch Query Molecules by InChI
+### Batch Query Molecules
 
 **POST /molecules/batch**
 
-Retrieve multiple molecule data by InChI in a single request.
+Retrieve multiple molecules' conformers in a single request.
 
 **Request Body:**
 ```json
 {
   "inchis": [
-    "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3",
-    "InChI=1S/H2O/h1H2"
+    "InChI=1/H2O/h1H2",
+    "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3"
   ]
 }
 ```
 
-**Note:**
-InChI identifiers should be properly URL encoded when sent in the request body. 
-The helper function `query_molecules_batch` handles encoding automatically.
-
 **Response (200):**
 ```json
 {
-  "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3": "Molecule data content...",
-  "InChI=1S/H2O/h1H2": "Molecule data content...",
-  "InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H": null
+  "InChI=1/H2O/h1H2": {
+    "inchi": "InChI=1/H2O/h1H2",
+    "count": 2,
+    "conformers": ["xyz_string_1", "xyz_string_2"]
+  },
+  "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3": null
 }
 ```
 
-**Response (422):**
-- Validation error if the request body format is invalid
+Note: `null` indicates the molecule was not found.
 
 ---
 
 ## SQLite Backend Service
 
-Base URL: `http://localhost:8001` (default, can be customized in config.json)
+Base URL: `http://localhost:8001` (default)
+
+The SQLite backend has identical API endpoints to the LMDB backend.
 
 ### Health Check
 
 **GET /**
 
-Returns service status information.
-
 **Response:**
 ```json
 {
-  "message": "moldb-api - SQLite Backend is running"
+  "message": "moldb-api - SQLite Backend is running",
+  "version": "2.0.0"
 }
 ```
 
@@ -121,47 +128,37 @@ Returns service status information.
 
 **GET /molecule/{inchi}**
 
-Retrieve molecule data by InChI.
+Same as LMDB backend.
 
-**Path Parameters:**
-- `inchi` (string, required): InChI identifier (URL encoded)
+### Batch Query Molecules
 
-**Note:**
-InChI identifiers contain special characters that must be URL encoded when used in HTTP requests. 
-For example, `InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1` should be encoded as `InChI%3D1S/C3H3N/c1-3-2-4%281%293/h3H%2C1H2/t3-%2C4%3F/m0/s1`.
+**POST /molecules/batch**
 
-**URL Encoding Examples:**
+Same as LMDB backend.
 
-Python:
+---
+
+## Using the Python Helper
+
 ```python
-import urllib.parse
-inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
-encoded_inchi = urllib.parse.quote(inchi, safe='')
-# Result: InChI%3D1S/C3H3N/c1-3-2-4%281%293/h3H%2C1H2/t3-%2C4%3F/m0/s1
-```
+from moldb.util.query_molecule import query_molecule, query_molecules_batch
 
-JavaScript:
-```javascript
-const inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1";
-const encodedInchi = encodeURIComponent(inchi);
-// Result: InChI%3D1S%2FC3H3N%2Fc1-3-2-4(1)3%2Fh3H%2C1H2%2Ft3-%2C4%3F%2Fm0%2Fs1
-```
+# Query single molecule (use the InChI format from your database)
+data = query_molecule("InChI=1/H2O/h1H2")
+if data:
+    print(f"Found {data['count']} conformers")
+    for i, conf in enumerate(data['conformers']):
+        print(f"Conformer {i}: {conf[:50]}...")
 
-cURL:
-```bash
-# Using Python to encode
-inchi="InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
-encoded_inchi=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$inchi', safe=''))")
-curl "http://localhost:8000/molecule/$encoded_inchi"
-```
+# Batch query
+results = query_molecules_batch([
+    "InChI=1/H2O/h1H2",
+    "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3"
+])
 
-**Response (200):**
-```json
-{
-  "inchi": "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3",
-  "content": "Molecule data content..."
-}
+for inchi, data in results.items():
+    if data:
+        print(f"{inchi}: {data['count']} conformers")
+    else:
+        print(f"{inchi}: not found")
 ```
-
-**Error Responses:**
-- 404: Molecule not found

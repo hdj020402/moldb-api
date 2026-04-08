@@ -1,51 +1,31 @@
 # moldb-api
 
-This project provides a high-performance service for storing and querying molecular structure data from XYZ files. It supports two storage backends:
-
-1. LMDB (Lightning Memory-Mapped Database) - Optimized for read-heavy workloads
-2. SQLite - Simpler deployment with good performance for most use cases
+High-performance molecular structure data storage and query service with conformer support.
 
 ## Features
 
-- High-performance random access to molecular data
-- Support for 2 million+ XYZ files
-- FastAPI-based REST API for querying data (read-only)
-- Support for InChI-based queries only
-- Extensible design for future enhancements
-- Batch insert support with `put_many` method for improved write performance (builder only)
+- **Conformer-aware storage**: Store multiple conformers per molecule
+- **Dual storage backends**: LMDB (read-heavy optimization) and SQLite (simple deployment)
+- **High performance**: Support for millions of molecules and conformers
+- **RESTful API**: FastAPI-based query service
+- **Flexible data import**: CLI tool or direct API calls
 
-## Project Structure
+## Important Note on InChI
 
-```
-moldb-api/
-├── config.json             # Configuration file
-├── main.py                 # Main entry point
-├── README.md               # This file
-├── API_DOCUMENTATION.md    # API documentation
-├── requirements.txt        # Python dependencies
-├── .gitignore              # Git ignore file
-└── src/
-    └── moldb/
-        ├── __init__.py
-        ├── core/           # Core storage implementations
-        │   ├── __init__.py
-        │   ├── lmdb.py     # LMDB storage implementation
-        │   └── sqlite.py   # SQLite storage implementation
-        ├── api/            # API services
-        │   ├── __init__.py
-        │   ├── lmdb.py     # FastAPI service for LMDB backend
-        │   └── sqlite.py   # FastAPI service for SQLite backend
-        ├── builder/        # Database building tools
-        │   ├── __init__.py
-        │   ├── lmdb.py     # Script to build LMDB database
-        │   └── sqlite.py   # Script to build SQLite database
-        ├── config/         # Configuration module
-        │   ├── __init__.py
-        │   └── config.py   # Configuration implementation
-        └── util/           # Utility functions
-            ├── __init__.py
-            └── query_molecule.py  # Helper function to query molecule data
-```
+**This database requires non-standard (Fixed-H) InChI** to distinguish tautomers.
+
+Standard InChI (`InChI=1S/...`) treats tautomers as equivalent (e.g., `(H2,4,5)` indicates equivalent hydrogens). Non-standard InChI with Fixed-H layer specifies exact hydrogen positions.
+
+**Format rules**:
+- `InChI=1S/...` - Standard InChI (cannot have `/f/h` layer)
+- `InChI=1/...` - Non-standard InChI (may have `/f/h` if molecule has ambiguous hydrogens)
+
+**Examples**:
+- Standard: `InChI=1S/H2O/h1H2`
+- Non-standard (no ambiguous H): `InChI=1/H2O/h1H2`
+- Non-standard Fixed-H (ambiguous H fixed): `InChI=1/C3H7NO/.../f/h4H2`
+
+Note: Your database should use non-standard InChI (`InChI=1/...`) generated with Fixed-H option.
 
 ## Installation
 
@@ -54,121 +34,156 @@ moldb-api/
 conda create -n moldb-api python=3.12
 conda activate moldb-api
 
-# Install required dependencies
-pip install -r requirements.txt
+# Install the package
+pip install -e .
+```
+
+## Storage Scheme
+
+Each molecule's conformers are stored as separate key-value pairs:
+
+```
+Key: {fixed_h_inchi}::meta    → {"count": N}
+Key: {fixed_h_inchi}::conf_0  → "xyz_string_0"
+Key: {fixed_h_inchi}::conf_1  → "xyz_string_1"
+...
+Key: {fixed_h_inchi}::conf_{N-1}  → "xyz_string_{N-1}"
 ```
 
 ## Building the Database
 
-### LMDB Backend
+### Method 1: CLI Tool
 
-```bash
-# Build the LMDB database from XYZ files
-# Note: Requires a CSV file containing InChIKey and InChI columns
-python main.py builder lmdb
+Prepare a CSV file with two columns: `xyz_path` and `fixed_h_inchi`:
+
+```csv
+xyz_path,fixed_h_inchi
+/path/to/mol1_conf1.xyz,InChI=1/C3H7NO/.../f/h4H2
+/path/to/mol1_conf2.xyz,InChI=1/C3H7NO/.../f/h4H2
+/path/to/mol2_conf1.xyz,InChI=1/C3H7NO/.../f/h5H2
 ```
 
-You can customize the build parameters by:
-1. Setting command line arguments: `python main.py builder lmdb --xyz_dir ./data/xyz_files --output molecules.lmdb --inchi_mapping inchi_mapping.csv --inchikey_column inchikey --inchi_column inchi`
-2. Setting parameters in the `config.json` file
-
-### SQLite Backend
+Build the database:
 
 ```bash
-# Build the SQLite database from XYZ files
-# Note: Requires a CSV file containing InChIKey and InChI columns
-python main.py builder sqlite
+# LMDB backend
+moldb builder lmdb --mapping conformers.csv --output molecules.lmdb
+
+# SQLite backend
+moldb builder sqlite --mapping conformers.csv --output molecules.db
 ```
 
-You can customize the build parameters by:
-1. Setting command line arguments: `python main.py builder sqlite --xyz_dir ./data/xyz_files --output molecules.db --inchi_mapping inchi_mapping.csv --inchikey_column inchikey --inchi_column inchi`
-2. Setting parameters in the `config.json` file
+### Method 2: Direct API Calls
 
-## Running the Services
+```python
+from moldb.core.lmdb import LMDBMoleculeStore
 
-### LMDB Service
+# Initialize store
+store = LMDBMoleculeStore("molecules.lmdb")
+
+# Store conformers
+conformers = [
+    "3\n\nO    0.000  0.000  0.000\nH    0.757  0.586  0.000\nH   -0.757  0.586  0.000",
+    "3\n\nO    0.001  0.001  0.001\nH    0.758  0.587  0.001\nH   -0.756  0.587  0.001",
+]
+store.put_conformers("InChI=1/H2O/h1H2", conformers)
+
+# Query conformers
+data = store.get_conformers("InChI=1/H2O/h1H2")
+print(f"Found {data['count']} conformers")
+
+store.close()
+```
+
+## Running the API Service
 
 ```bash
-# Start the LMDB-based service (port 8000)
-python main.py api lmdb
+# LMDB service (default port 8000)
+moldb api lmdb
+
+# SQLite service (default port 8001)
+moldb api sqlite
 ```
 
-You can customize the database path and other parameters by:
-1. Setting environment variables:
-   - `MOLECULES_LMDB_PATH` - Database path
-   - `MOLECULES_API_HOST` - Service host
-   - `MOLECULES_LMDB_API_PORT` - Service port
-2. Setting parameters in the `config.json` file
+Configuration via environment variables:
 
-### SQLite Service
-
-```bash
-# Start the SQLite-based service (port 8001)
-python main.py api sqlite
-```
-
-You can customize the database path and other parameters by:
-1. Setting environment variables:
-   - `MOLECULES_DB_PATH` - Database path
-   - `MOLECULES_API_HOST` - Service host
-   - `MOLECULES_SQLITE_API_PORT` - Service port
-2. Setting parameters in the `config.json` file
+| Variable | Description |
+|----------|-------------|
+| `MOLECULES_LMDB_PATH` | LMDB database path |
+| `MOLECULES_DB_PATH` | SQLite database path |
+| `MOLECULES_API_HOST` | API host |
+| `MOLECULES_LMDB_API_PORT` | LMDB API port |
+| `MOLECULES_SQLITE_API_PORT` | SQLite API port |
 
 ## API Usage
 
-### Query by InChI
+### Query Single Molecule
 
 ```bash
-# LMDB service
-curl http://localhost:8000/molecule/InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
-
-# SQLite service
-curl http://localhost:8001/molecule/InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3
+# Note: InChI must match your database format (InChI=1/... or InChI=1S/...)
+curl "http://localhost:8000/molecule/InChI=1/H2O/h1H2"
 ```
 
-### Batch Query Multiple Molecules
+Response:
+```json
+{
+  "inchi": "InChI=1/H2O/h1H2",
+  "count": 2,
+  "conformers": [
+    "3\n\nO    0.000  0.000  0.000\nH    0.757  0.586  0.000\nH   -0.757  0.586  0.000",
+    "3\n\nO    0.001  0.001  0.001\nH    0.758  0.587  0.001\nH   -0.756  0.587  0.001"
+  ]
+}
+```
+
+### Batch Query
 
 ```bash
-# LMDB service
 curl -X POST http://localhost:8000/molecules/batch \
   -H "Content-Type: application/json" \
-  -d '{"inchis": ["InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3", "InChI=1S/H2O/h1H2"]}'
-
-# SQLite service
-curl -X POST http://localhost:8001/molecules/batch \
-  -H "Content-Type: application/json" \
-  -d '{"inchis": ["InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3", "InChI=1S/H2O/h1H2"]}'
+  -d '{"inchis": ["InChI=1/H2O/h1H2", "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3"]}'
 ```
 
-### Using the query_molecule helper function
-
-Python:
-```python
-from moldb.util.query_molecule import query_molecule
-
-# Query molecule data (automatically handles URL encoding)
-data = query_molecule("InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3")
-
-if data:
-    print(f"Content: {data['content']}")
-else:
-    print("Molecule not found")
+Response:
+```json
+{
+  "InChI=1/H2O/h1H2": {
+    "inchi": "InChI=1/H2O/h1H2",
+    "count": 2,
+    "conformers": ["...", "..."]
+  },
+  "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3": null
+}
 ```
 
-### Using the query_molecules_batch helper function
+## Project Structure
 
-Python:
-```python
-from moldb.util.query_molecule import query_molecules_batch
-
-# Query multiple molecules in a single request (automatically handles URL encoding)
-inchis = ["InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3", "InChI=1S/H2O/h1H2", "InChI=1S/INVALID"]
-results = query_molecules_batch(inchis)
-
-for inchi, content in results.items():
-    if content is not None:
-        print(f"Found: {inchi}")
-        print(f"Content: {content[:50]}...")
-    else:
-        print(f"Not found: {inchi}")
 ```
+moldb-api/
+├── pyproject.toml          # Package configuration
+├── config.json             # Global configuration
+├── main.py                 # Legacy entry point
+└── src/moldb/
+    ├── __init__.py
+    ├── cli.py              # CLI entry point
+    ├── core/               # Core storage implementations
+    │   ├── lmdb.py         # LMDB storage
+    │   └── sqlite.py       # SQLite storage
+    ├── api/                # FastAPI services
+    │   ├── lmdb.py         # LMDB API
+    │   └── sqlite.py       # SQLite API
+    ├── builder/            # Database building tools
+    │   ├── lmdb.py         # LMDB builder
+    │   └── sqlite.py       # SQLite builder
+    ├── config/             # Configuration management
+    │   └── config.py
+    └── util/               # Utility functions
+        └── query_molecule.py
+```
+
+## Performance Considerations
+
+- **LMDB**: Optimized for read-heavy workloads, recommended for large-scale deployments
+- **SQLite**: Simpler deployment, suitable for moderate workloads
+- **Batch writes**: Use `put_many_conformers()` for efficient bulk imports
+- **Conformer count**: No hard limit; tested with up to 1000 conformers per molecule
