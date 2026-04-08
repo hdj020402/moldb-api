@@ -19,7 +19,8 @@ import pandas as pd
 from ..config.config import config
 
 
-def main(mapping_file: str, output_path: str, batch_size: int = 1000):
+def main(mapping_file: str, output_path: str, batch_size: int = 1000,
+         xyz_path_column: str = None, inchi_column: str = None):
     """
     Build SQLite database from XYZ files with conformer support.
 
@@ -27,7 +28,15 @@ def main(mapping_file: str, output_path: str, batch_size: int = 1000):
         mapping_file: CSV file with xyz_path and fixed_h_inchi columns
         output_path: Path to output SQLite database
         batch_size: Number of molecules to write in each transaction
+        xyz_path_column: Name of the xyz_path column in CSV
+        inchi_column: Name of the fixed_h_inchi column in CSV
     """
+    # Use config values if not provided
+    if xyz_path_column is None:
+        xyz_path_column = config.get_xyz_path_column()
+    if inchi_column is None:
+        inchi_column = config.get_inchi_column()
+
     # Initialize store
     store = SQLiteMoleculeStore(output_path)
     store.init_db()
@@ -37,13 +46,13 @@ def main(mapping_file: str, output_path: str, batch_size: int = 1000):
     df = pd.read_csv(mapping_file)
 
     # Validate required columns
-    if "xyz_path" not in df.columns or "fixed_h_inchi" not in df.columns:
-        print("Error: CSV must have 'xyz_path' and 'fixed_h_inchi' columns")
+    if xyz_path_column not in df.columns or inchi_column not in df.columns:
+        print(f"Error: CSV must have '{xyz_path_column}' and '{inchi_column}' columns")
         return
 
     # Group by InChI
-    print("Grouping XYZ files by InChI...")
-    grouped = df.groupby("fixed_h_inchi")["xyz_path"]
+    print(f"Grouping XYZ files by {inchi_column}...")
+    grouped = df.groupby(inchi_column)[xyz_path_column]
 
     total_molecules = grouped.ngroups
     total_conformers = len(df)
@@ -124,9 +133,20 @@ def run_build_sqlite():
         default=1000,
         help="Number of molecules per write transaction"
     )
+    parser.add_argument(
+        "--xyz_path_column",
+        default=None,
+        help=f"Name of the xyz_path column (default: {config.get_xyz_path_column()})"
+    )
+    parser.add_argument(
+        "--inchi_column",
+        default=None,
+        help=f"Name of the fixed_h_inchi column (default: {config.get_inchi_column()})"
+    )
 
     args = parser.parse_args()
-    main(args.mapping, args.output, args.batch_size)
+    main(args.mapping, args.output, args.batch_size,
+         args.xyz_path_column, args.inchi_column)
 
 
 if __name__ == "__main__":
