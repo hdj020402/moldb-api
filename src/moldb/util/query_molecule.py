@@ -102,7 +102,7 @@ def query_molecules_batch(inchis: List[str], base_url: str = "http://localhost:8
 # Example usage
 if __name__ == "__main__":
     # Example InChI with special characters
-    inchi = "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
+    inchi = "InChI=1/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1"
     
     # Query the molecule data
     data = query_molecule(inchi)
@@ -118,8 +118,8 @@ if __name__ == "__main__":
     
     # Example batch query
     inchis = [
-        "InChI=1S/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1",
-        "InChI=1S/H2O/h1H2"
+        "InChI=1/C3H3N/c1-3-2-4(1)3/h3H,1H2/t3-,4?/m0/s1",
+        "InChI=1/H2O/h1H2"
     ]
     
     # Query multiple molecules
