@@ -1,114 +1,141 @@
 """
 Script to build LMDB database from XYZ files.
+
+CSV format (required):
+    xyz_path,fixed_h_inchi
+    /path/to/mol1_conf1.xyz,InChI=1/C3H7NO/.../f/h4H2
+    /path/to/mol1_conf2.xyz,InChI=1/C3H7NO/.../f/h4H2
+    /path/to/mol2_conf1.xyz,InChI=1/C3H7NO/.../f/h5H2
+
+The CSV is grouped by fixed_h_inchi, and all XYZ files for the same InChI
+are stored as conformers of that molecule.
+
+Note: Use non-standard InChI (InChI=1/...) with Fixed-H option.
 """
 import time
-import os
 import argparse
 from ..core.lmdb import LMDBMoleculeStore
 import pandas as pd
 from ..config.config import config
 
-def main(xyz_dir: str, output_path: str, inchi_mapping_file: str, 
-         inchikey_column: str, inchi_column: str, map_size: int,
-         batch_size: int = 50000):
+
+def main(mapping_file: str, output_path: str, map_size: int, batch_size: int = 1000):
     """
-    Build LMDB database from XYZ files with write speed monitoring.
-    
+    Build LMDB database from XYZ files with conformer support.
+
     Args:
-        xyz_dir: Directory containing XYZ files (named by InChIKey)
+        mapping_file: CSV file with xyz_path and fixed_h_inchi columns
         output_path: Path to output LMDB database
-        inchi_mapping_file: CSV file with InChIKey to InChI mapping
-        inchikey_column: Name of the InChIKey column in the CSV file
-        inchi_column: Name of the InChI column in the CSV file
         map_size: Maximum size of the database in bytes
-        batch_size: Number of entries to write in each transaction
+        batch_size: Number of molecules to write in each transaction
     """
-    # Initialize store — disable sync for faster writes (optional but recommended for bulk load)
+    # Initialize store — disable sync for faster writes
     store = LMDBMoleculeStore(output_path, map_size=map_size, sync=False, writemap=True)
-    
-    # Load InChI mapping
-    inchikey_to_inchi = {}
-    if inchi_mapping_file and os.path.exists(inchi_mapping_file):
-        print(f"Loading InChIKey to InChI mapping from {inchi_mapping_file}...")
-        df = pd.read_csv(inchi_mapping_file)
-        for _, row in df.iterrows():
-            inchikey = row[inchikey_column]
-            inchi = row[inchi_column]
-            inchikey_to_inchi[inchikey] = inchi
 
-    # Get list of XYZ files upfront for progress estimation
-    all_xyz_files = [f for f in os.listdir(xyz_dir) if f.endswith(".xyz")]
-    total_files = len(all_xyz_files)
-    print(f"Found {total_files} XYZ files in {xyz_dir}")
+    # Load mapping
+    print(f"Loading mapping from {mapping_file}...")
+    df = pd.read_csv(mapping_file)
 
+    # Validate required columns
+    if "xyz_path" not in df.columns or "fixed_h_inchi" not in df.columns:
+        print("Error: CSV must have 'xyz_path' and 'fixed_h_inchi' columns")
+        store.close()
+        return
+
+    # Group by InChI
+    print("Grouping XYZ files by InChI...")
+    grouped = df.groupby("fixed_h_inchi")["xyz_path"]
+
+    total_molecules = grouped.ngroups
+    total_conformers = len(df)
+    print(f"Found {total_molecules} unique molecules with {total_conformers} total conformers")
+
+    # Process in batches
     entries = []
-    processed = 0
-    stored = 0
+    processed_molecules = 0
+    processed_conformers = 0
+    failed_files = 0
     start_time = time.time()
 
-    for filename in all_xyz_files:
-        inchikey = filename[:-4]  # remove .xyz
-        inchi = inchikey_to_inchi.get(inchikey)
-        if not inchi:
-            continue
+    for inchi, xyz_paths in grouped:
+        conformers = []
+        for xyz_path in xyz_paths:
+            try:
+                with open(xyz_path, "r") as f:
+                    content = f.read()
+                conformers.append(content)
+                processed_conformers += 1
+            except Exception as e:
+                print(f"Error reading {xyz_path}: {e}")
+                failed_files += 1
+                continue
 
-        filepath = os.path.join(xyz_dir, filename)
-        try:
-            with open(filepath, "r") as f:
-                content = f.read()
-        except Exception as e:
-            print(f"Error reading {filepath}: {e}")
-            continue
-
-        entries.append((inchi, content))
-        processed += 1
+        if conformers:
+            entries.append((inchi, conformers))
+            processed_molecules += 1
 
         # Batch commit
         if len(entries) >= batch_size:
             batch_start = time.time()
-            written = store.put_many(entries)
+            written = store.put_many_conformers(entries)
             batch_time = time.time() - batch_start
-            stored += written
             entries = []
 
-            # Speed stats
+            # Stats
             elapsed = time.time() - start_time
-            speed = stored / elapsed if elapsed > 0 else 0
-            print(f"[{elapsed:.1f}s] Processed {processed}/{total_files}, "
-                  f"Stored {stored}, "
-                  f"Speed: {speed:.1f} entries/sec, "
+            speed = processed_molecules / elapsed if elapsed > 0 else 0
+            print(f"[{elapsed:.1f}s] Processed {processed_molecules}/{total_molecules} molecules, "
+                  f"{processed_conformers} conformers, "
+                  f"Speed: {speed:.1f} mol/s, "
                   f"Last batch: {written} in {batch_time:.2f}s")
 
     # Final batch
     if entries:
         batch_start = time.time()
-        written = store.put_many(entries)
-        stored += written
+        written = store.put_many_conformers(entries)
         batch_time = time.time() - batch_start
         elapsed = time.time() - start_time
-        speed = stored / elapsed if elapsed > 0 else 0
-        print(f"[{elapsed:.1f}s] Final batch: {written} entries in {batch_time:.2f}s")
+        speed = processed_molecules / elapsed if elapsed > 0 else 0
+        print(f"[{elapsed:.1f}s] Final batch: {written} molecules in {batch_time:.2f}s")
 
     total_time = time.time() - start_time
-    final_speed = stored / total_time if total_time > 0 else 0
-    print(f"\n✅ Done. Total: {processed} files processed, {stored} stored in {total_time:.2f}s "
-          f"({final_speed:.1f} entries/sec)")
+    final_speed = processed_molecules / total_time if total_time > 0 else 0
+    print(f"\nDone. Total: {processed_molecules} molecules, {processed_conformers} conformers, "
+          f"{failed_files} failed files in {total_time:.2f}s ({final_speed:.1f} mol/s)")
     store.close()
+
 
 def run_build_lmdb():
     """Run the LMDB build process with configuration support."""
-    parser = argparse.ArgumentParser(description="Build LMDB database from XYZ files")
-    parser.add_argument("--xyz_dir", default=config.get_lmdb_xyz_dir(), help="Directory containing XYZ files (named by InChIKey)")
-    parser.add_argument("--output", default=config.get_lmdb_path(), help="Output LMDB database path")
-    parser.add_argument("--inchi_mapping", default=config.get_lmdb_inchi_mapping(), help="CSV file with InChIKey to InChI mapping")
-    parser.add_argument("--inchikey_column", default=config.get_inchikey_column(), help="Name of the InChIKey column in the CSV file")
-    parser.add_argument("--inchi_column", default=config.get_inchi_column(), help="Name of the InChI column in the CSV file")
-    parser.add_argument("--map_size", type=int, default=30 * 1024**3, help="Maximum size of the database in bytes (default: 30GB)")
-    parser.add_argument("--batch_size", type=int, default=50000, help="Number of entries per write transaction")
-    
+    parser = argparse.ArgumentParser(
+        description="Build LMDB database from XYZ files with conformer support"
+    )
+    parser.add_argument(
+        "--mapping",
+        required=True,
+        help="CSV file with xyz_path and fixed_h_inchi columns"
+    )
+    parser.add_argument(
+        "--output",
+        default=config.get_lmdb_path(),
+        help="Output LMDB database path"
+    )
+    parser.add_argument(
+        "--map_size",
+        type=int,
+        default=30 * 1024**3,
+        help="Maximum size of the database in bytes (default: 30GB)"
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1000,
+        help="Number of molecules per write transaction"
+    )
+
     args = parser.parse_args()
-        
-    main(args.xyz_dir, args.output, args.inchi_mapping, args.inchikey_column, args.inchi_column, args.map_size, args.batch_size)
+    main(args.mapping, args.output, args.map_size, args.batch_size)
+
 
 if __name__ == "__main__":
     run_build_lmdb()

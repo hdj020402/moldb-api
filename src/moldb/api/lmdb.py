@@ -1,5 +1,8 @@
 """
 FastAPI service for LMDB-based molecular structure data storage.
+
+Note: Use non-standard InChI (InChI=1/...) with Fixed-H option to distinguish tautomers.
+Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -13,96 +16,97 @@ import urllib.parse
 app = FastAPI(
     title="moldb-api - LMDB Backend",
     description="A high-performance service for storing and querying molecular structure data using LMDB backend.",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 # Get database path from configuration
 DB_PATH = config.get_lmdb_path()
 
 # Global store instance
-# In production, you might want to use dependency injection or lifespan events
 STORE = LMDBMoleculeStore(DB_PATH)
+
 
 class MoleculeResponse(BaseModel):
     """Response model for molecule data."""
     inchi: str
-    content: str
+    count: int
+    conformers: list[str]
+
 
 class BatchMoleculeRequest(BaseModel):
     """Request model for batch molecule queries."""
     inchis: list[str]
 
-class BatchMoleculeResponse(BaseModel):
-    """Response model for batch molecule queries."""
-    results: list[MoleculeResponse]
 
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"message": "moldb-api - LMDB Backend is running"}
+    return {"message": "moldb-api - LMDB Backend is running", "version": "2.0.0"}
+
 
 @app.get("/molecule/{inchi:path}", response_model=MoleculeResponse)
 async def get_molecule_by_inchi(inchi: str):
     """
-    Retrieve molecule data by InChI.
-    
+    Retrieve all conformers for a molecule by InChI.
+
     Args:
-        inchi: InChI identifier (URL encoded)
-        
+        inchi: Fixed-H InChI identifier (URL encoded)
+
     Returns:
-        Molecule data
-        
+        Molecule data with all conformers
+
     Raises:
         HTTPException: If molecule not found
     """
     # URL decode the InChI parameter
     decoded_inchi = urllib.parse.unquote(inchi)
-    content = STORE.get_by_inchi(decoded_inchi)
-    if content is None:
+    data = STORE.get_conformers(decoded_inchi)
+    if data is None:
         raise HTTPException(status_code=404, detail="Molecule not found")
-    return {"inchi": decoded_inchi, "content": content}
+    return data
 
-@app.post("/molecules/batch", response_model=dict[str, Optional[str]])
+
+@app.post("/molecules/batch")
 async def get_molecules_batch(request: BatchMoleculeRequest):
     """
-    Retrieve multiple molecule data by InChI in a single request.
-    
+    Retrieve multiple molecules' conformers by InChI in a single request.
+
     Args:
-        request: Batch request containing a list of InChI identifiers
-        
+        request: Batch request containing a list of Fixed-H InChI identifiers
+
     Returns:
-        Dictionary mapping InChI to content for found molecules, with None for not found
+        Dictionary mapping InChI to molecule data (with count and conformers),
+        with None for not found molecules
     """
     response = {}
-    
+
     try:
-        # URL decode all InChI identifiers with error handling
-        decoded_inchis = []
-        for inchi in request.inchis:
-            decoded_inchi = urllib.parse.unquote(inchi)
-            decoded_inchis.append(decoded_inchi)
-        
+        # URL decode all InChI identifiers
+        decoded_inchis = [urllib.parse.unquote(inchi) for inchi in request.inchis]
+
         # Get all results from the store
-        results = STORE.get_many_by_inchi(decoded_inchis)
-        
-        # Format the response as a dictionary, including all requested InChIs
-        for inchi, content in results:
-            response[inchi] = content  # Include even if content is None
+        results = STORE.get_many_conformers(decoded_inchis)
+
+        # Format the response as a dictionary
+        for inchi, data in results:
+            response[inchi] = data  # Include even if data is None
+
     except Exception as e:
-        # Log the error but return empty dict instead of throwing error
         print(f"Error in get_molecules_batch: {e}")
         return {}
-    
+
     return response
+
 
 def run_lmdb_api():
     """Run the LMDB API service."""
     uvicorn.run(
-        "moldb.api.lmdb:app", 
-        host=config.get_api_host(), 
+        "moldb.api.lmdb:app",
+        host=config.get_api_host(),
         port=config.get_lmdb_api_port(),
         reload=False
     )
+
 
 if __name__ == "__main__":
     run_lmdb_api()

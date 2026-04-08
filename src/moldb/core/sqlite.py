@@ -1,18 +1,33 @@
 """
 SQLite backend implementation for molecular structure data storage.
+
+Storage scheme:
+    Key: {inchi}::meta    → {"count": N}
+    Key: {inchi}::conf_0  → xyz_string_0
+    ...
+    Key: {inchi}::conf_{N-1}  → xyz_string_{N-1}
+
+Note: Use non-standard InChI (InChI=1/...) with Fixed-H option to distinguish tautomers.
+Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
 import sqlite3
-from typing import Optional
+import json
+from typing import Optional, Iterable
 import threading
 
 
+# Key suffixes for composite keys
+META_SUFFIX = "::meta"
+CONF_PREFIX = "::conf_"
+
+
 class SQLiteMoleculeStore:
-    """SQLite-based storage for molecular structure data."""
-    
+    """SQLite-based storage for molecular structure data with conformer support."""
+
     def __init__(self, db_path: str):
         """
         Initialize SQLite storage.
-        
+
         Args:
             db_path: Path to the SQLite database file
         """
@@ -28,138 +43,299 @@ class SQLiteMoleculeStore:
             self.local.conn.execute("PRAGMA synchronous=NORMAL;")
         return self.local.conn
 
-    def get_many_by_inchi(self, inchis: list[str]) -> list[tuple[str, Optional[str]]]:
-        """
-        Retrieve multiple molecule data by InChI.
-        
-        Args:
-            inchis: List of InChI identifiers
-            
-        Returns:
-            List of (inchi, content) tuples, where content is None if not found
-        """
-        if not inchis:
-            return []
-        
-        # Filter out any potentially problematic InChI strings
-        safe_inchis = []
-        for inchi in inchis:
-            try:
-                # Basic check for valid InChI format
-                if inchi and isinstance(inchi, str):
-                    safe_inchis.append(inchi)
-            except Exception:
-                continue  # Skip invalid entries
-        
-        if not safe_inchis:
-            return []
-        
-        try:
-            # Create placeholders for the SQL query
-            placeholders = ','.join('?' * len(safe_inchis))
-            query = f"SELECT inchi, content FROM molecules WHERE inchi IN ({placeholders})"
-            
-            # Execute query
-            cur = self.conn.execute(query, safe_inchis)
-            results = cur.fetchall()
-            
-            # Create a dictionary for quick lookup
-            result_dict = {row[0]: row[1] for row in results}
-            
-            # Return results in the same order as input, including None for missing entries
-            return [(inchi, result_dict.get(inchi)) for inchi in safe_inchis]
-        except Exception:
-            # If there's a database error, return empty results for all requested InChIs
-            return [(inchi, None) for inchi in safe_inchis]
+    def _make_meta_key(self, inchi: str) -> str:
+        """Create meta key for an InChI."""
+        return inchi + META_SUFFIX
+
+    def _make_conf_key(self, inchi: str, index: int) -> str:
+        """Create conformer key for an InChI and index."""
+        return inchi + CONF_PREFIX + f"{index:06d}"
 
     def init_db(self):
         """Initialize the database schema."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS molecules (
-                inchi TEXT PRIMARY KEY,
+                key TEXT PRIMARY KEY,
                 content TEXT NOT NULL
             )
         """)
-        
-        # Create indexes for better query performance
+
         self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_inchi ON molecules(inchi)
+            CREATE INDEX IF NOT EXISTS idx_key ON molecules(key)
         """)
-        
+
         self.conn.commit()
 
-    def get_by_inchi(self, inchi: str) -> Optional[str]:
+    def get_conformers(self, inchi: str) -> Optional[dict]:
         """
-        Retrieve molecule data by InChI.
-        
+        Retrieve all conformers for a molecule by InChI.
+
         Args:
-            inchi: InChI identifier
-            
+            inchi: Fixed-H InChI identifier
+
         Returns:
-            Molecule data as string, or None if not found
+            Dictionary with 'inchi', 'count', and 'conformers' list,
+            or None if not found
         """
+        # Get meta info
+        meta_key = self._make_meta_key(inchi)
         cur = self.conn.execute(
-            "SELECT content FROM molecules WHERE inchi=?", 
-            (inchi,)
+            "SELECT content FROM molecules WHERE key=?",
+            (meta_key,)
         )
         row = cur.fetchone()
-        return row[0] if row else None
+        if row is None:
+            return None
 
-    def put(self, inchi: str, content: str) -> bool:
+        meta = json.loads(row[0])
+        count = meta["count"]
+
+        # Get all conformers using LIKE query
+        conf_prefix = self._make_conf_key(inchi, 0)[:-6]  # Remove the index part
+        cur = self.conn.execute(
+            "SELECT key, content FROM molecules WHERE key LIKE ? ORDER BY key",
+            (conf_prefix + "%",)
+        )
+
+        conformers = [None] * count  # Pre-allocate list
+        for row in cur.fetchall():
+            key = row[0]
+            content = row[1]
+            # Extract index from key
+            try:
+                index_str = key.split(CONF_PREFIX)[-1]
+                index = int(index_str)
+                if 0 <= index < count:
+                    conformers[index] = content
+            except (ValueError, IndexError):
+                continue
+
+        return {
+            "inchi": inchi,
+            "count": count,
+            "conformers": conformers
+        }
+
+    def get_many_conformers(self, inchis: list[str]) -> list[tuple[str, Optional[dict]]]:
         """
-        Store molecule data.
-        
+        Retrieve multiple molecules' conformers by InChI.
+
         Args:
-            inchi: InChI identifier
-            content: Molecule data
-            
+            inchis: List of Fixed-H InChI identifiers
+
+        Returns:
+            List of (inchi, conformers_dict) tuples, where conformers_dict is None if not found
+        """
+        if not inchis:
+            return []
+
+        results = []
+
+        # Get all meta info first
+        meta_keys = [self._make_meta_key(inchi) for inchi in inchis]
+        placeholders = ','.join('?' * len(meta_keys))
+        query = f"SELECT key, content FROM molecules WHERE key IN ({placeholders})"
+
+        cur = self.conn.execute(query, meta_keys)
+        meta_rows = cur.fetchall()
+
+        # Build meta dict
+        meta_dict = {}
+        for row in meta_rows:
+            key = row[0]
+            content = row[1]
+            # Extract inchi from meta key
+            inchi = key[:-len(META_SUFFIX)]
+            meta_dict[inchi] = json.loads(content)
+
+        # Now get conformers for each found molecule
+        for inchi in inchis:
+            if inchi not in meta_dict:
+                results.append((inchi, None))
+                continue
+
+            count = meta_dict[inchi]["count"]
+            conf_prefix = self._make_conf_key(inchi, 0)[:-6]  # Remove the index part
+
+            cur = self.conn.execute(
+                "SELECT key, content FROM molecules WHERE key LIKE ? ORDER BY key",
+                (conf_prefix + "%",)
+            )
+
+            conformers = [None] * count
+            for row in cur.fetchall():
+                key = row[0]
+                content = row[1]
+                try:
+                    index_str = key.split(CONF_PREFIX)[-1]
+                    index = int(index_str)
+                    if 0 <= index < count:
+                        conformers[index] = content
+                except (ValueError, IndexError):
+                    continue
+
+            results.append((inchi, {
+                "inchi": inchi,
+                "count": count,
+                "conformers": conformers
+            }))
+
+        return results
+
+    def put_conformers(self, inchi: str, conformers: list[str]) -> bool:
+        """
+        Store all conformers for a molecule.
+
+        Args:
+            inchi: Fixed-H InChI identifier
+            conformers: List of XYZ strings, one per conformer
+
         Returns:
             True if successful
         """
+        # Delete existing entries for this inchi
+        self.delete(inchi)
+
+        # Write meta
+        meta = {"count": len(conformers)}
+        meta_key = self._make_meta_key(inchi)
         self.conn.execute(
-            "INSERT OR REPLACE INTO molecules (inchi, content) VALUES (?, ?)",
-            (inchi, content)
+            "INSERT INTO molecules (key, content) VALUES (?, ?)",
+            (meta_key, json.dumps(meta))
         )
+
+        # Write conformers
+        for i, conf in enumerate(conformers):
+            conf_key = self._make_conf_key(inchi, i)
+            self.conn.execute(
+                "INSERT INTO molecules (key, content) VALUES (?, ?)",
+                (conf_key, conf)
+            )
+
         self.conn.commit()
         return True
 
-    def put_many(self, items):
+    def put_many_conformers(self, items: Iterable[tuple[str, list[str]]]) -> int:
         """
-        Store multiple molecule data entries in a single transaction.
-        
+        Store many molecules' conformers in a single transaction.
+
         Args:
-            items: Iterable of (inchi, content) pairs
-            
+            items: Iterable of (inchi, conformers_list) pairs
+
         Returns:
-            Number of successfully written entries
+            Number of molecules written
         """
         count = 0
-        try:
-            for inchi, content in items:
+        items_list = list(items)  # Convert to list for deletion pass
+
+        # Delete existing entries
+        for inchi, _ in items_list:
+            conf_prefix = self._make_conf_key(inchi, 0)[:-6]
+            self.conn.execute(
+                "DELETE FROM molecules WHERE key = ? OR key LIKE ?",
+                (self._make_meta_key(inchi), conf_prefix + "%")
+            )
+
+        # Insert new entries
+        for inchi, conformers in items_list:
+            # Write meta
+            meta = {"count": len(conformers)}
+            meta_key = self._make_meta_key(inchi)
+            self.conn.execute(
+                "INSERT INTO molecules (key, content) VALUES (?, ?)",
+                (meta_key, json.dumps(meta))
+            )
+
+            # Write conformers
+            for i, conf in enumerate(conformers):
+                conf_key = self._make_conf_key(inchi, i)
                 self.conn.execute(
-                    "INSERT OR REPLACE INTO molecules (inchi, content) VALUES (?, ?)",
-                    (inchi, content)
+                    "INSERT INTO molecules (key, content) VALUES (?, ?)",
+                    (conf_key, conf)
                 )
-                count += 1
-            self.conn.commit()
-        except Exception as e:
-            self.conn.rollback()
-            raise e
+
+            count += 1
+
+        self.conn.commit()
         return count
 
     def delete(self, inchi: str) -> bool:
         """
-        Delete molecule data.
-        
+        Delete a molecule and all its conformers.
+
         Args:
-            inchi: InChI identifier
-            
+            inchi: Fixed-H InChI identifier
+
         Returns:
-            True if successful, False otherwise
+            True if successful, False if not found
         """
+        # Check if exists
+        meta_key = self._make_meta_key(inchi)
         cur = self.conn.execute(
-            "DELETE FROM molecules WHERE inchi=?", 
-            (inchi,)
+            "SELECT content FROM molecules WHERE key=?",
+            (meta_key,)
+        )
+        row = cur.fetchone()
+        if row is None:
+            return False
+
+        # Delete all entries with this inchi prefix
+        conf_prefix = self._make_conf_key(inchi, 0)[:-6]
+        self.conn.execute(
+            "DELETE FROM molecules WHERE key = ? OR key LIKE ?",
+            (meta_key, conf_prefix + "%")
         )
         self.conn.commit()
-        return cur.rowcount > 0
+        return True
+
+    # Legacy API compatibility methods
+
+    def get_by_inchi(self, inchi: str) -> Optional[dict]:
+        """
+        Retrieve molecule data by InChI (legacy compatible).
+
+        Args:
+            inchi: Fixed-H InChI identifier
+
+        Returns:
+            Dictionary with molecule data, or None if not found
+        """
+        return self.get_conformers(inchi)
+
+    def get_many_by_inchi(self, inchis: list[str]) -> list[tuple[str, Optional[dict]]]:
+        """
+        Retrieve multiple molecule data by InChI (legacy compatible).
+
+        Args:
+            inchis: List of Fixed-H InChI identifiers
+
+        Returns:
+            List of (inchi, data_dict) tuples
+        """
+        return self.get_many_conformers(inchis)
+
+    def put(self, inchi: str, content: str) -> bool:
+        """
+        Store molecule data (legacy compatible - treats content as single conformer).
+
+        Args:
+            inchi: Fixed-H InChI identifier
+            content: XYZ string
+
+        Returns:
+            True if successful
+        """
+        return self.put_conformers(inchi, [content])
+
+    def put_many(self, items: Iterable[tuple[str, str]]) -> int:
+        """
+        Store many molecules (legacy compatible - treats each content as single conformer).
+
+        Args:
+            items: Iterable of (inchi, content) pairs
+
+        Returns:
+            Number of molecules written
+        """
+        converted = ((inchi, [content]) for inchi, content in items)
+        return self.put_many_conformers(converted)
