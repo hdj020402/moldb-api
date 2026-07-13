@@ -26,13 +26,13 @@ Note: Use non-standard InChI (InChI=1/...) with Fixed-H option.
 import time
 import argparse
 from typing import Iterable, Iterator
-from ..core.lmdb import LMDBMoleculeStore, ConflictMode, ConformerInput
+from ..core.lmdb import LMDBMoleculeStore, ConflictMode, ConformerData
 import pandas as pd
 from ..config.config import config
 
 
 def build_lmdb_stream(
-    items: Iterable[tuple[str, list[ConformerInput]]],
+    items: Iterable[tuple[str, list[ConformerData]]],
     output_path: str,
     map_size: int = 30 * 1024 ** 3,
     batch_size: int = 1000,
@@ -48,8 +48,8 @@ def build_lmdb_stream(
     Args:
         items: Iterable of (inchi, conformers_list) pairs.
                Each inchi is a Fixed-H InChI string.
-               Each conformers_list is a list of conformers — bare XYZ strings
-               or dicts with \"xyz\" key and optional metadata.
+               Each conformers_list is a list of dicts with \"xyz\" key
+               plus any optional metadata.
         output_path: Path to output LMDB database file.
         map_size: Maximum size of the database in bytes (default: 30GB).
         batch_size: Number of molecules per write transaction.
@@ -64,7 +64,7 @@ def build_lmdb_stream(
     """
     store = LMDBMoleculeStore(output_path, map_size=map_size, sync=False, writemap=True)
 
-    batch: list[tuple[str, list[ConformerInput]]] = []
+    batch: list[tuple[str, list[ConformerData]]] = []
     stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
     total_conformers = 0
     start_time = time.time()

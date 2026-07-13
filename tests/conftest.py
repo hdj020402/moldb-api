@@ -22,6 +22,18 @@ def xyz_list():
 
 
 @pytest.fixture
+def conf(xyz_single):
+    """A minimal conformer dict (just XYZ content)."""
+    return {"xyz": xyz_single}
+
+
+@pytest.fixture
+def confs(xyz_list):
+    """A list of minimal conformer dicts."""
+    return [{"xyz": x} for x in xyz_list]
+
+
+@pytest.fixture
 def conf_with_meta(xyz_single):
     """A conformer dict with arbitrary metadata."""
     return {

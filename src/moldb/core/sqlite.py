@@ -19,8 +19,7 @@ import threading
 from typing import Optional, Iterable, Literal, Any, Union
 
 ConflictMode = Literal["overwrite", "skip", "merge"]
-ConformerData = dict[str, Any]          # returned from get_conformers — always has "xyz"
-ConformerInput = Union[str, ConformerData]  # accepted by put_conformers
+ConformerData = dict[str, Any]  # always has "xyz" key
 
 # Key suffixes for composite keys
 META_SUFFIX = "::meta"
@@ -75,19 +74,14 @@ class SQLiteMoleculeStore:
         self.conn.commit()
 
     @staticmethod
-    def _serialize_conf(conf: ConformerInput) -> str:
-        """Serialize a conformer for storage. Bare str is treated as XYZ content."""
-        if isinstance(conf, str):
-            conf = {"xyz": conf}
+    def _serialize_conf(conf: ConformerData) -> str:
+        """Serialize a conformer for storage."""
         return json.dumps(conf)
 
     @staticmethod
     def _deserialize_conf(content: str) -> ConformerData:
-        """Deserialize a conformer from storage. Handles legacy bare-XYZ format."""
-        if content.startswith("{"):
-            return json.loads(content)
-        # Legacy: bare XYZ string stored by older versions
-        return {"xyz": content}
+        """Deserialize a conformer from storage."""
+        return json.loads(content)
 
     def exists(self, inchi: str) -> bool:
         """Check if a molecule entry exists."""
@@ -207,7 +201,7 @@ class SQLiteMoleculeStore:
     def put_conformers(
         self,
         inchi: str,
-        conformers: list[ConformerInput],
+        conformers: list[ConformerData],
         on_conflict: ConflictMode = "overwrite",
     ) -> dict:
         """
@@ -215,9 +209,8 @@ class SQLiteMoleculeStore:
 
         Args:
             inchi: Fixed-H InChI identifier.
-            conformers: List of conformers. Each can be a bare XYZ string
-                        or a dict with "xyz" key plus optional metadata
-                        (e.g. {"xyz": "...", "energy": -76.4}).
+            conformers: List of conformer dicts. Each must have an "xyz" key
+                        plus any optional metadata keys (e.g. energy, source).
             on_conflict: How to handle existing entries:
                 - "overwrite": Replace existing data (default).
                 - "skip": Do nothing if entry already exists.
@@ -281,7 +274,7 @@ class SQLiteMoleculeStore:
 
     def put_many_conformers(
         self,
-        items: Iterable[tuple[str, list[ConformerInput]]],
+        items: Iterable[tuple[str, list[ConformerData]]],
         on_conflict: ConflictMode = "overwrite",
     ) -> dict:
         """

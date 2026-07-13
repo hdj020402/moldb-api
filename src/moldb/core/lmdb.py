@@ -18,8 +18,7 @@ import lmdb
 from typing import Optional, Iterable, Literal, Any, Union
 
 ConflictMode = Literal["overwrite", "skip", "merge"]
-ConformerData = dict[str, Any]          # returned from get_conformers — always has "xyz"
-ConformerInput = Union[str, ConformerData]  # accepted by put_conformers
+ConformerData = dict[str, Any]  # always has "xyz" key
 
 # Key suffixes for composite keys
 META_SUFFIX = "::meta"
@@ -69,20 +68,14 @@ class LMDBMoleculeStore:
         return (inchi + CONF_PREFIX + f"{index:06d}").encode("utf-8")
 
     @staticmethod
-    def _serialize_conf(conf: ConformerInput) -> bytes:
-        """Serialize a conformer for storage. Bare str is treated as XYZ content."""
-        if isinstance(conf, str):
-            conf = {"xyz": conf}
+    def _serialize_conf(conf: ConformerData) -> bytes:
+        """Serialize a conformer for storage."""
         return json.dumps(conf).encode("utf-8")
 
     @staticmethod
     def _deserialize_conf(raw: bytes) -> ConformerData:
-        """Deserialize a conformer from storage. Handles legacy bare-XYZ format."""
-        text = raw.decode("utf-8")
-        if text.startswith("{"):
-            return json.loads(text)
-        # Legacy: bare XYZ string stored by older versions
-        return {"xyz": text}
+        """Deserialize a conformer from storage."""
+        return json.loads(raw.decode("utf-8"))
 
     def exists(self, inchi: str) -> bool:
         """Check if a molecule entry exists."""
@@ -167,7 +160,7 @@ class LMDBMoleculeStore:
     def put_conformers(
         self,
         inchi: str,
-        conformers: list[ConformerInput],
+        conformers: list[ConformerData],
         on_conflict: ConflictMode = "overwrite",
     ) -> dict:
         """
@@ -175,9 +168,8 @@ class LMDBMoleculeStore:
 
         Args:
             inchi: Fixed-H InChI identifier.
-            conformers: List of conformers. Each can be a bare XYZ string
-                        or a dict with "xyz" key plus optional metadata
-                        (e.g. {"xyz": "...", "energy": -76.4}).
+            conformers: List of conformer dicts. Each must have an "xyz" key
+                        plus any optional metadata keys (e.g. energy, source).
             on_conflict: How to handle existing entries:
                 - "overwrite": Replace existing data (default).
                 - "skip": Do nothing if entry already exists.
@@ -231,7 +223,7 @@ class LMDBMoleculeStore:
 
     def put_many_conformers(
         self,
-        items: Iterable[tuple[str, list[ConformerInput]]],
+        items: Iterable[tuple[str, list[ConformerData]]],
         on_conflict: ConflictMode = "overwrite",
     ) -> dict:
         """
