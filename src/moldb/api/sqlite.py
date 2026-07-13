@@ -62,3 +62,7 @@ async def get_molecules_batch(request: BatchMoleculeRequest):
 def run_sqlite_api():
     """Run the SQLite API service."""
     uvicorn.run("moldb.api.sqlite:app", host=settings.host, port=settings.sqlite_port)
+
+
+if __name__ == "__main__":
+    run_sqlite_api()

@@ -63,5 +63,9 @@ def run_lmdb_api():
     uvicorn.run(
         "moldb.api.lmdb:app",
         host=settings.host,
-        port=settings.lmdb_port
-        )
+        port=settings.lmdb_port,
+    )
+
+
+if __name__ == "__main__":
+    run_lmdb_api()
