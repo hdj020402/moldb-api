@@ -10,11 +10,11 @@ Storage scheme:
 Note: Use non-standard InChI (InChI=1/...) with Fixed-H option to distinguish tautomers.
 Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
-import os
 import json
 import lmdb
-from typing import Optional, Iterable
+from typing import Optional, Iterable, Literal
 
+ConflictMode = Literal["overwrite", "skip", "merge"]
 
 # Key suffixes for composite keys
 META_SUFFIX = "::meta"
@@ -27,7 +27,7 @@ class LMDBMoleculeStore:
     def __init__(
         self,
         db_path: str,
-        map_size: int = 30 * 1024**3,  # 30GB
+        map_size: int = 30 * 1024 ** 3,  # 30GB
         sync: bool = True,
         writemap: bool = False,
     ):
@@ -63,6 +63,11 @@ class LMDBMoleculeStore:
         """Create conformer key for an InChI and index."""
         return (inchi + CONF_PREFIX + f"{index:06d}").encode("utf-8")
 
+    def exists(self, inchi: str) -> bool:
+        """Check if a molecule entry exists."""
+        with self.env.begin() as txn:
+            return txn.get(self._make_meta_key(inchi)) is not None
+
     def get_conformers(self, inchi: str) -> Optional[dict]:
         """
         Retrieve all conformers for a molecule by InChI.
@@ -75,7 +80,6 @@ class LMDBMoleculeStore:
             or None if not found
         """
         with self.env.begin() as txn:
-            # Get meta info
             meta_key = self._make_meta_key(inchi)
             meta_data = txn.get(meta_key)
             if meta_data is None:
@@ -84,13 +88,11 @@ class LMDBMoleculeStore:
             meta = json.loads(meta_data.decode("utf-8"))
             count = meta["count"]
 
-            # Get all conformers
             conformers = []
             for i in range(count):
                 conf_key = self._make_conf_key(inchi, i)
                 conf_data = txn.get(conf_key)
                 if conf_data is None:
-                    # Should not happen in consistent database
                     conformers.append(None)
                 else:
                     conformers.append(conf_data.decode("utf-8"))
@@ -98,7 +100,7 @@ class LMDBMoleculeStore:
             return {
                 "inchi": inchi,
                 "count": count,
-                "conformers": conformers
+                "conformers": conformers,
             }
 
     def get_many_conformers(self, inchis: list[str]) -> list[tuple[str, Optional[dict]]]:
@@ -114,7 +116,6 @@ class LMDBMoleculeStore:
         results = []
         with self.env.begin() as txn:
             for inchi in inchis:
-                # Get meta info
                 meta_key = self._make_meta_key(inchi)
                 meta_data = txn.get(meta_key)
 
@@ -125,7 +126,6 @@ class LMDBMoleculeStore:
                 meta = json.loads(meta_data.decode("utf-8"))
                 count = meta["count"]
 
-                # Get all conformers
                 conformers = []
                 for i in range(count):
                     conf_key = self._make_conf_key(inchi, i)
@@ -138,61 +138,134 @@ class LMDBMoleculeStore:
                 results.append((inchi, {
                     "inchi": inchi,
                     "count": count,
-                    "conformers": conformers
+                    "conformers": conformers,
                 }))
 
         return results
 
-    def put_conformers(self, inchi: str, conformers: list[str]) -> bool:
+    def put_conformers(
+        self,
+        inchi: str,
+        conformers: list[str],
+        on_conflict: ConflictMode = "overwrite",
+    ) -> dict:
         """
         Store all conformers for a molecule.
 
         Args:
-            inchi: Fixed-H InChI identifier
-            conformers: List of XYZ strings, one per conformer
+            inchi: Fixed-H InChI identifier.
+            conformers: List of XYZ strings, one per conformer.
+            on_conflict: How to handle existing entries:
+                - "overwrite": Replace existing data (default).
+                - "skip": Do nothing if entry already exists.
+                - "merge": Append new conformers to existing ones.
 
         Returns:
-            True if successful
+            dict with keys:
+                - action: "written" | "overwritten" | "skipped" | "merged"
+                - count: number of conformers now stored
         """
         with self.env.begin(write=True) as txn:
-            # Write meta
-            meta = {"count": len(conformers)}
             meta_key = self._make_meta_key(inchi)
+            existing = txn.get(meta_key)
+
+            if existing is not None:
+                old_meta = json.loads(existing.decode("utf-8"))
+                old_count = old_meta["count"]
+
+                if on_conflict == "skip":
+                    return {"action": "skipped", "count": old_count}
+
+                if on_conflict == "merge":
+                    old_conformers = self._read_existing_conformers(txn, inchi, old_count)
+                    conformers = old_conformers + conformers
+
+                if on_conflict == "overwrite":
+                    # Clean up stale conformer keys (if new count is smaller)
+                    if old_count > len(conformers):
+                        for i in range(len(conformers), old_count):
+                            txn.delete(self._make_conf_key(inchi, i))
+
+            new_count = len(conformers)
+            meta = {"count": new_count}
             txn.put(meta_key, json.dumps(meta).encode("utf-8"))
 
-            # Write conformers
             for i, conf in enumerate(conformers):
-                conf_key = self._make_conf_key(inchi, i)
-                txn.put(conf_key, conf.encode("utf-8"))
+                txn.put(self._make_conf_key(inchi, i), conf.encode("utf-8"))
 
-        return True
+            if existing is None:
+                action = "written"
+            elif on_conflict == "merge":
+                action = "merged"
+            else:
+                action = "overwritten"
 
-    def put_many_conformers(self, items: Iterable[tuple[str, list[str]]]) -> int:
+            return {"action": action, "count": new_count}
+
+    def put_many_conformers(
+        self,
+        items: Iterable[tuple[str, list[str]]],
+        on_conflict: ConflictMode = "overwrite",
+    ) -> dict:
         """
         Efficiently store many molecules' conformers in a single transaction.
 
         Args:
-            items: Iterable of (inchi, conformers_list) pairs
+            items: Iterable of (inchi, conformers_list) pairs.
+            on_conflict: How to handle existing entries:
+                - "overwrite": Replace existing data (default).
+                - "skip": Do nothing if entry already exists.
+                - "merge": Append new conformers to existing ones.
 
         Returns:
-            Number of molecules written
+            dict with keys: written, overwritten, skipped, merged
         """
-        count = 0
+        stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
+
         with self.env.begin(write=True) as txn:
             for inchi, conformers in items:
-                # Write meta
-                meta = {"count": len(conformers)}
                 meta_key = self._make_meta_key(inchi)
+                existing = txn.get(meta_key)
+
+                if existing is not None:
+                    old_meta = json.loads(existing.decode("utf-8"))
+                    old_count = old_meta["count"]
+
+                    if on_conflict == "skip":
+                        stats["skipped"] += 1
+                        continue
+
+                    if on_conflict == "merge":
+                        old_conformers = self._read_existing_conformers(txn, inchi, old_count)
+                        conformers = old_conformers + conformers
+                        stats["merged"] += 1
+                    else:
+                        # overwrite: clean up stale conformer keys
+                        if old_count > len(conformers):
+                            for i in range(len(conformers), old_count):
+                                txn.delete(self._make_conf_key(inchi, i))
+                        stats["overwritten"] += 1
+                else:
+                    stats["written"] += 1
+
+                # Write meta and conformers
+                meta = {"count": len(conformers)}
                 txn.put(meta_key, json.dumps(meta).encode("utf-8"))
-
-                # Write conformers
                 for i, conf in enumerate(conformers):
-                    conf_key = self._make_conf_key(inchi, i)
-                    txn.put(conf_key, conf.encode("utf-8"))
+                    txn.put(self._make_conf_key(inchi, i), conf.encode("utf-8"))
 
-                count += 1
+        return stats
 
-        return count
+    @staticmethod
+    def _read_existing_conformers(txn, inchi: str, count: int) -> list[str]:
+        """Read existing conformers within an active transaction."""
+        result = []
+        for i in range(count):
+            conf_key = (inchi + CONF_PREFIX + f"{i:06d}").encode("utf-8")
+            data = txn.get(conf_key)
+            if data is not None:
+                result.append(data.decode("utf-8"))
+        return result
 
     def delete(self, inchi: str) -> bool:
         """
@@ -205,7 +278,6 @@ class LMDBMoleculeStore:
             True if successful, False if not found
         """
         with self.env.begin(write=True) as txn:
-            # Get meta to know how many conformers to delete
             meta_key = self._make_meta_key(inchi)
             meta_data = txn.get(meta_key)
             if meta_data is None:
@@ -214,67 +286,41 @@ class LMDBMoleculeStore:
             meta = json.loads(meta_data.decode("utf-8"))
             count = meta["count"]
 
-            # Delete all conformers
             for i in range(count):
-                conf_key = self._make_conf_key(inchi, i)
-                txn.delete(conf_key)
+                txn.delete(self._make_conf_key(inchi, i))
 
-            # Delete meta
             txn.delete(meta_key)
 
         return True
 
-    # Legacy API compatibility methods
+    # --- Legacy API compatibility methods ---
 
     def get_by_inchi(self, inchi: str) -> Optional[dict]:
-        """
-        Retrieve molecule data by InChI (legacy compatible).
-
-        Args:
-            inchi: Fixed-H InChI identifier
-
-        Returns:
-            Dictionary with molecule data, or None if not found
-        """
+        """Retrieve molecule data by InChI (legacy compatible)."""
         return self.get_conformers(inchi)
 
     def get_many_by_inchi(self, inchis: list[str]) -> list[tuple[str, Optional[dict]]]:
-        """
-        Retrieve multiple molecule data by InChI (legacy compatible).
-
-        Args:
-            inchis: List of Fixed-H InChI identifiers
-
-        Returns:
-            List of (inchi, data_dict) tuples
-        """
+        """Retrieve multiple molecule data by InChI (legacy compatible)."""
         return self.get_many_conformers(inchis)
 
     def put(self, inchi: str, content: str) -> bool:
         """
         Store molecule data (legacy compatible - treats content as single conformer).
 
-        Args:
-            inchi: Fixed-H InChI identifier
-            content: XYZ string
-
-        Returns:
-            True if successful
+        Always overwrites on conflict.
         """
-        return self.put_conformers(inchi, [content])
+        self.put_conformers(inchi, [content], on_conflict="overwrite")
+        return True
 
     def put_many(self, items: Iterable[tuple[str, str]]) -> int:
         """
         Store many molecules (legacy compatible - treats each content as single conformer).
 
-        Args:
-            items: Iterable of (inchi, content) pairs
-
-        Returns:
-            Number of molecules written
+        Always overwrites on conflict.
         """
         converted = ((inchi, [content]) for inchi, content in items)
-        return self.put_many_conformers(converted)
+        result = self.put_many_conformers(converted, on_conflict="overwrite")
+        return result["written"] + result["overwritten"]
 
     def close(self):
         """Close the database connection."""

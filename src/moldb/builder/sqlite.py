@@ -7,6 +7,7 @@ Two usage modes:
    >>> from moldb.builder.sqlite import build_sqlite_stream
    >>> items = [("InChI=1/...", ["xyz_content_1", "xyz_content_2"]), ...]
    >>> stats = build_sqlite_stream(items, "molecules.db")
+   >>> stats = build_sqlite_stream(items, "molecules.db", on_conflict="skip")
 
 2. CLI mode (from mapping file) — existing disk-based workflow:
    $ moldb builder sqlite --mapping mapping.csv --output molecules.db
@@ -25,7 +26,7 @@ Note: Use non-standard InChI (InChI=1/...) with Fixed-H option.
 import time
 import argparse
 from typing import Iterable, Iterator
-from ..core.sqlite import SQLiteMoleculeStore
+from ..core.sqlite import SQLiteMoleculeStore, ConflictMode
 import pandas as pd
 from ..config.config import config
 
@@ -34,6 +35,7 @@ def build_sqlite_stream(
     items: Iterable[tuple[str, list[str]]],
     output_path: str,
     batch_size: int = 1000,
+    on_conflict: ConflictMode = "overwrite",
 ) -> dict:
     """
     Build SQLite database from an iterable of (inchi, conformers) pairs.
@@ -48,58 +50,88 @@ def build_sqlite_stream(
                Each conformers_list is a list of XYZ content strings.
         output_path: Path to output SQLite database file.
         batch_size: Number of molecules per write transaction.
+        on_conflict: How to handle existing keys:
+            - "overwrite": Replace existing data (default).
+            - "skip": Do nothing if key already exists.
+            - "merge": Append conformers to existing entry.
 
     Returns:
-        dict with keys: molecules, conformers, time_seconds
+        dict with keys: processed, written, overwritten, skipped, merged,
+        conformers, time_seconds
     """
     store = SQLiteMoleculeStore(output_path)
     store.init_db()
 
     batch: list[tuple[str, list[str]]] = []
-    total_molecules = 0
+    stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
     total_conformers = 0
     start_time = time.time()
+
+    def _total_processed() -> int:
+        return stats["written"] + stats["overwritten"] + stats["skipped"] + stats["merged"]
 
     for inchi, conformers in items:
         if not conformers:
             continue
 
         batch.append((inchi, conformers))
-        total_molecules += 1
         total_conformers += len(conformers)
 
         if len(batch) >= batch_size:
             batch_start = time.time()
-            written = store.put_many_conformers(batch)
+            result = store.put_many_conformers(batch, on_conflict=on_conflict)
+            for key in ("written", "overwritten", "skipped", "merged"):
+                stats[key] += result[key]
             batch_time = time.time() - batch_start
             batch.clear()
 
             elapsed = time.time() - start_time
-            speed = total_molecules / elapsed if elapsed > 0 else 0
-            print(f"[{elapsed:.1f}s] Written {total_molecules} molecules, "
-                  f"{total_conformers} conformers, "
-                  f"Speed: {speed:.1f} mol/s, "
-                  f"Last batch: {written} in {batch_time:.2f}s")
+            processed = _total_processed()
+            speed = processed / elapsed if elapsed > 0 else 0
+            _print_progress(elapsed, processed, speed, result, batch_time)
 
     # Final batch
     if batch:
         batch_start = time.time()
-        written = store.put_many_conformers(batch)
+        result = store.put_many_conformers(batch, on_conflict=on_conflict)
+        for key in ("written", "overwritten", "skipped", "merged"):
+            stats[key] += result[key]
         batch_time = time.time() - batch_start
         elapsed = time.time() - start_time
-        speed = total_molecules / elapsed if elapsed > 0 else 0
-        print(f"[{elapsed:.1f}s] Final batch: {written} molecules in {batch_time:.2f}s")
+        processed = _total_processed()
+        speed = processed / elapsed if elapsed > 0 else 0
+        _print_progress(elapsed, processed, speed, result, batch_time)
 
     total_time = time.time() - start_time
-    final_speed = total_molecules / total_time if total_time > 0 else 0
-    print(f"\nDone. Total: {total_molecules} molecules, {total_conformers} conformers "
+    processed = _total_processed()
+    final_speed = processed / total_time if total_time > 0 else 0
+    print(f"\nDone. Processed: {processed} molecules ({stats}), "
+          f"{total_conformers} conformers "
           f"in {total_time:.2f}s ({final_speed:.1f} mol/s)")
 
     return {
-        "molecules": total_molecules,
+        "processed": processed,
+        "written": stats["written"],
+        "overwritten": stats["overwritten"],
+        "skipped": stats["skipped"],
+        "merged": stats["merged"],
         "conformers": total_conformers,
         "time_seconds": total_time,
     }
+
+
+def _print_progress(elapsed: float, processed: int, speed: float,
+                    batch_result: dict, batch_time: float):
+    """Print a progress line for a completed batch."""
+    parts = [f"W:{batch_result['written']}", f"O:{batch_result['overwritten']}"]
+    if batch_result.get("skipped"):
+        parts.append(f"S:{batch_result['skipped']}")
+    if batch_result.get("merged"):
+        parts.append(f"M:{batch_result['merged']}")
+    detail = ",".join(parts)
+    print(f"[{elapsed:.1f}s] Total {processed} mols, "
+          f"Speed: {speed:.1f} mol/s, "
+          f"Batch [{detail}] in {batch_time:.2f}s")
 
 
 def iter_mapping(
@@ -148,6 +180,7 @@ def build_sqlite_from_mapping(
     mapping_file: str,
     output_path: str,
     batch_size: int = 1000,
+    on_conflict: ConflictMode = "overwrite",
     xyz_path_column: str | None = None,
     inchi_column: str | None = None,
 ) -> dict:
@@ -158,14 +191,16 @@ def build_sqlite_from_mapping(
         mapping_file: CSV file with xyz_path and inchi columns.
         output_path: Path to output SQLite database.
         batch_size: Molecules per write transaction.
+        on_conflict: How to handle existing keys.
         xyz_path_column: Name of the xyz_path column in CSV.
         inchi_column: Name of the inchi column in CSV.
 
     Returns:
-        dict with keys: molecules, conformers, time_seconds
+        dict with keys: processed, written, overwritten, skipped, merged,
+        conformers, time_seconds
     """
     items = iter_mapping(mapping_file, xyz_path_column, inchi_column)
-    return build_sqlite_stream(items, output_path, batch_size)
+    return build_sqlite_stream(items, output_path, batch_size, on_conflict)
 
 
 def run_build_sqlite():
@@ -190,6 +225,12 @@ def run_build_sqlite():
         help="Number of molecules per write transaction"
     )
     parser.add_argument(
+        "--on_conflict",
+        default="overwrite",
+        choices=["overwrite", "skip", "merge"],
+        help="Conflict resolution strategy (default: overwrite)"
+    )
+    parser.add_argument(
         "--xyz_path_column",
         default=None,
         help=f"Name of the xyz_path column (default: {config.get_xyz_path_column()})"
@@ -203,7 +244,7 @@ def run_build_sqlite():
     args = parser.parse_args()
     build_sqlite_from_mapping(
         args.mapping, args.output, args.batch_size,
-        args.xyz_path_column, args.inchi_column,
+        args.on_conflict, args.xyz_path_column, args.inchi_column,
     )
 
 
