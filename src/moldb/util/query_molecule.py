@@ -109,7 +109,8 @@ if __name__ == "__main__":
     if data:
         print("Molecule found:")
         print(f"InChI: {data['inchi']}")
-        print(f"Content: {data['content']}")
+        print(f"Conformers: {data['count']}")
+        print(f"First XYZ: {data['conformers'][0]['xyz'][:50]}...")
     else:
         print("Molecule not found")
     
@@ -125,7 +126,8 @@ if __name__ == "__main__":
     batch_results = query_molecules_batch(inchis)
     
     print("Batch query results:")
-    for data in batch_results:
-        print(f"InChI: {data['inchi']}")
-        print(f"Content: {data['content'][:50]}...")
-        print()
+    for inchi, mol_data in batch_results.items():
+        if mol_data:
+            print(f"{inchi}: {mol_data['count']} conformer(s)")
+        else:
+            print(f"{inchi}: not found")

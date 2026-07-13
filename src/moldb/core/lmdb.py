@@ -231,7 +231,7 @@ class LMDBMoleculeStore:
 
         Args:
             items: Iterable of (inchi, conformers_list) pairs.
-                   Each conformer can be a bare XYZ string or a dict with metadata.
+                   Each conformer must be a dict with an "xyz" key.
             on_conflict: How to handle existing entries:
                 - "overwrite": Replace existing data (default).
                 - "skip": Do nothing if entry already exists.

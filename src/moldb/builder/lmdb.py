@@ -5,7 +5,7 @@ Two usage modes:
 
 1. Stream mode (programmatic) — feed an iterable directly from a pipeline:
    >>> from moldb.builder.lmdb import build_lmdb_stream
-   >>> items = [("InChI=1/...", ["xyz_content_1", "xyz_content_2"]), ...]
+   >>> items = [("InChI=1/...", [{"xyz": "xyz_content_1"}, {"xyz": "xyz_content_2"}]), ...]
    >>> stats = build_lmdb_stream(items, "molecules.lmdb")
    >>> stats = build_lmdb_stream(items, "molecules.lmdb", on_conflict="skip")
 
@@ -142,12 +142,12 @@ def iter_mapping(
     mapping_file: str,
     xyz_path_column: str | None = None,
     inchi_column: str | None = None,
-) -> Iterator[tuple[str, list[str]]]:
+) -> Iterator[tuple[str, list[ConformerData]]]:
     """
-    Generator that yields (inchi, [xyz_contents]) from a CSV mapping file.
+    Generator that yields (inchi, conformers) from a CSV mapping file.
 
     This bridges the file-based workflow to the stream-based builder.
-    Use this when you have pre-exported XYZ files and a mapping CSV.
+    XYZ content read from files is wrapped as {"xyz": content} dicts.
 
     Args:
         mapping_file: Path to CSV with xyz_path and inchi columns.
@@ -155,7 +155,7 @@ def iter_mapping(
         inchi_column: Name of the column containing Fixed-H InChI.
 
     Yields:
-        (inchi, [xyz_content_strings]) tuples
+        (inchi, [conformer_dict]) tuples
     """
     if xyz_path_column is None:
         xyz_path_column = config.get_xyz_path_column()
@@ -172,10 +172,10 @@ def iter_mapping(
     grouped = df.groupby(inchi_column)[xyz_path_column]
 
     for inchi, xyz_paths in grouped:
-        conformers: list[str] = []
+        conformers: list[ConformerData] = []
         for xyz_path in xyz_paths:
             with open(xyz_path, "r") as f:
-                conformers.append(f.read())
+                conformers.append({"xyz": f.read()})
         if conformers:
             yield (inchi, conformers)
 
