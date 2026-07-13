@@ -9,11 +9,16 @@ import os
 import json
 
 
+def _config_path() -> str:
+    """Resolve config file path from MOLDB_CONFIG env or default."""
+    return os.environ.get("MOLDB_CONFIG", "config/config.json")
+
+
 class ApiSettings:
     """API service settings (host, port, DB paths)."""
 
-    def __init__(self, config_file: str = "config/config.json"):
-        self._data: dict = self._load_file(config_file)
+    def __init__(self):
+        self._data: dict = self._load_file(_config_path())
 
     @staticmethod
     def _load_file(path: str) -> dict:
@@ -53,8 +58,8 @@ class ApiSettings:
 class BuilderSettings:
     """Builder settings (column name defaults for CSV mapping files)."""
 
-    def __init__(self, config_file: str = "config/config.json"):
-        self._data: dict = self._load_file(config_file)
+    def __init__(self):
+        self._data: dict = self._load_file(_config_path())
 
     @staticmethod
     def _load_file(path: str) -> dict:
