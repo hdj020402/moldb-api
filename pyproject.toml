@@ -34,7 +34,7 @@ dev = [
 ]
 
 [project.scripts]
-moldb = "moldb.cli:main"
+moldb = "main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

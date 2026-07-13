@@ -219,7 +219,7 @@ Response:
 ```text
 moldb-api/
 ├── pyproject.toml          # Package configuration
-├── main.py                 # Legacy entry point
+├── main.py                 # CLI entry point
 ├── config/                 # Configuration
 │   ├── config.example.json # Example config (copy to config.json)
 │   └── config.json         # Local config (gitignored)
@@ -233,7 +233,6 @@ moldb-api/
 │   └── test_builder.py
 └── src/moldb/
     ├── __init__.py
-    ├── cli.py              # CLI entry point
     ├── core/               # Core storage implementations
     │   ├── lmdb.py         # LMDB storage
     │   └── sqlite.py       # SQLite storage
