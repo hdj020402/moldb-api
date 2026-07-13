@@ -15,7 +15,7 @@ Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
 import json
 import lmdb
-from typing import Optional, Iterable, Literal, Any
+from typing import Iterable, Literal, Any
 
 ConflictMode = Literal["overwrite", "skip", "merge"]
 ConformerData = dict[str, Any]  # always has "xyz" key
@@ -82,7 +82,7 @@ class LMDBMoleculeStore:
         with self.env.begin() as txn:
             return txn.get(self._make_meta_key(inchi)) is not None
 
-    def get_conformers(self, inchi: str) -> Optional[dict]:
+    def get_conformers(self, inchi: str) -> dict | None:
         """
         Retrieve all conformers for a molecule by InChI.
 
@@ -117,7 +117,7 @@ class LMDBMoleculeStore:
                 "conformers": conformers,
             }
 
-    def get_many_conformers(self, inchis: list[str]) -> list[tuple[str, Optional[dict]]]:
+    def get_many_conformers(self, inchis: list[str]) -> list[tuple[str, dict | None]]:
         """
         Retrieve multiple molecules' conformers by InChI in a single transaction.
 

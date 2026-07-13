@@ -4,7 +4,6 @@ Handles configuration from file, environment variables, and defaults.
 """
 import os
 import json
-from typing import Optional
 
 class Config:
     """Configuration class for moldb-api."""

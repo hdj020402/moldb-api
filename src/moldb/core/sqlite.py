@@ -16,7 +16,7 @@ Standard InChI (InChI=1S/...) cannot have /f/h layer.
 import sqlite3
 import json
 import threading
-from typing import Optional, Iterable, Literal, Any, Union
+from typing import Iterable, Literal, Any
 
 ConflictMode = Literal["overwrite", "skip", "merge"]
 ConformerData = dict[str, Any]  # always has "xyz" key
@@ -91,7 +91,7 @@ class SQLiteMoleculeStore:
         )
         return cur.fetchone() is not None
 
-    def get_conformers(self, inchi: str) -> Optional[dict]:
+    def get_conformers(self, inchi: str) -> dict | None:
         """
         Retrieve all conformers for a molecule by InChI.
 
@@ -137,7 +137,7 @@ class SQLiteMoleculeStore:
             "conformers": conformers,
         }
 
-    def get_many_conformers(self, inchis: list[str]) -> list[tuple[str, Optional[dict]]]:
+    def get_many_conformers(self, inchis: list[str]) -> list[tuple[str, dict | None]]:
         """
         Retrieve multiple molecules' conformers by InChI.
 
