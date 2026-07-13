@@ -1,7 +1,17 @@
 """
-Script to build SQLite database from XYZ files.
+Build SQLite database from XYZ file iterables or mapping files.
 
-CSV format (required):
+Two usage modes:
+
+1. Stream mode (programmatic) — feed an iterable directly from a pipeline:
+   >>> from moldb.builder.sqlite import build_sqlite_stream
+   >>> items = [("InChI=1/...", ["xyz_content_1", "xyz_content_2"]), ...]
+   >>> stats = build_sqlite_stream(items, "molecules.db")
+
+2. CLI mode (from mapping file) — existing disk-based workflow:
+   $ moldb builder sqlite --mapping mapping.csv --output molecules.db
+
+CSV format for CLI mode (required):
     xyz_path,fixed_h_inchi
     /path/to/mol1_conf1.xyz,InChI=1/C3H7NO/.../f/h4H2
     /path/to/mol1_conf2.xyz,InChI=1/C3H7NO/.../f/h4H2
@@ -14,106 +24,152 @@ Note: Use non-standard InChI (InChI=1/...) with Fixed-H option.
 """
 import time
 import argparse
+from typing import Iterable, Iterator
 from ..core.sqlite import SQLiteMoleculeStore
 import pandas as pd
 from ..config.config import config
 
 
-def main(mapping_file: str, output_path: str, batch_size: int = 1000,
-         xyz_path_column: str = None, inchi_column: str = None):
+def build_sqlite_stream(
+    items: Iterable[tuple[str, list[str]]],
+    output_path: str,
+    batch_size: int = 1000,
+) -> dict:
     """
-    Build SQLite database from XYZ files with conformer support.
+    Build SQLite database from an iterable of (inchi, conformers) pairs.
+
+    This is the core stream-based builder — it receives data in memory
+    and writes directly to SQLite without any disk I/O for the XYZ content.
+    Ideal for embedding in preprocessing pipelines.
 
     Args:
-        mapping_file: CSV file with xyz_path and fixed_h_inchi columns
-        output_path: Path to output SQLite database
-        batch_size: Number of molecules to write in each transaction
-        xyz_path_column: Name of the xyz_path column in CSV
-        inchi_column: Name of the fixed_h_inchi column in CSV
+        items: Iterable of (inchi, conformers_list) pairs.
+               Each inchi is a Fixed-H InChI string.
+               Each conformers_list is a list of XYZ content strings.
+        output_path: Path to output SQLite database file.
+        batch_size: Number of molecules per write transaction.
+
+    Returns:
+        dict with keys: molecules, conformers, time_seconds
     """
-    # Use config values if not provided
+    store = SQLiteMoleculeStore(output_path)
+    store.init_db()
+
+    batch: list[tuple[str, list[str]]] = []
+    total_molecules = 0
+    total_conformers = 0
+    start_time = time.time()
+
+    for inchi, conformers in items:
+        if not conformers:
+            continue
+
+        batch.append((inchi, conformers))
+        total_molecules += 1
+        total_conformers += len(conformers)
+
+        if len(batch) >= batch_size:
+            batch_start = time.time()
+            written = store.put_many_conformers(batch)
+            batch_time = time.time() - batch_start
+            batch.clear()
+
+            elapsed = time.time() - start_time
+            speed = total_molecules / elapsed if elapsed > 0 else 0
+            print(f"[{elapsed:.1f}s] Written {total_molecules} molecules, "
+                  f"{total_conformers} conformers, "
+                  f"Speed: {speed:.1f} mol/s, "
+                  f"Last batch: {written} in {batch_time:.2f}s")
+
+    # Final batch
+    if batch:
+        batch_start = time.time()
+        written = store.put_many_conformers(batch)
+        batch_time = time.time() - batch_start
+        elapsed = time.time() - start_time
+        speed = total_molecules / elapsed if elapsed > 0 else 0
+        print(f"[{elapsed:.1f}s] Final batch: {written} molecules in {batch_time:.2f}s")
+
+    total_time = time.time() - start_time
+    final_speed = total_molecules / total_time if total_time > 0 else 0
+    print(f"\nDone. Total: {total_molecules} molecules, {total_conformers} conformers "
+          f"in {total_time:.2f}s ({final_speed:.1f} mol/s)")
+
+    return {
+        "molecules": total_molecules,
+        "conformers": total_conformers,
+        "time_seconds": total_time,
+    }
+
+
+def iter_mapping(
+    mapping_file: str,
+    xyz_path_column: str | None = None,
+    inchi_column: str | None = None,
+) -> Iterator[tuple[str, list[str]]]:
+    """
+    Generator that yields (inchi, [xyz_contents]) from a CSV mapping file.
+
+    This bridges the file-based workflow to the stream-based builder.
+    Use this when you have pre-exported XYZ files and a mapping CSV.
+
+    Args:
+        mapping_file: Path to CSV with xyz_path and inchi columns.
+        xyz_path_column: Name of the column containing XYZ file paths.
+        inchi_column: Name of the column containing Fixed-H InChI.
+
+    Yields:
+        (inchi, [xyz_content_strings]) tuples
+    """
     if xyz_path_column is None:
         xyz_path_column = config.get_xyz_path_column()
     if inchi_column is None:
         inchi_column = config.get_inchi_column()
 
-    # Initialize store
-    store = SQLiteMoleculeStore(output_path)
-    store.init_db()
-
-    # Load mapping
-    print(f"Loading mapping from {mapping_file}...")
     df = pd.read_csv(mapping_file)
 
-    # Validate required columns
     if xyz_path_column not in df.columns or inchi_column not in df.columns:
-        print(f"Error: CSV must have '{xyz_path_column}' and '{inchi_column}' columns")
-        return
+        raise ValueError(
+            f"CSV must have '{xyz_path_column}' and '{inchi_column}' columns"
+        )
 
-    # Group by InChI
-    print(f"Grouping XYZ files by {inchi_column}...")
     grouped = df.groupby(inchi_column)[xyz_path_column]
 
-    total_molecules = grouped.ngroups
-    total_conformers = len(df)
-    print(f"Found {total_molecules} unique molecules with {total_conformers} total conformers")
-
-    # Process in batches
-    entries = []
-    processed_molecules = 0
-    processed_conformers = 0
-    failed_files = 0
-    start_time = time.time()
-
     for inchi, xyz_paths in grouped:
-        conformers = []
+        conformers: list[str] = []
         for xyz_path in xyz_paths:
-            try:
-                with open(xyz_path, "r") as f:
-                    content = f.read()
-                conformers.append(content)
-                processed_conformers += 1
-            except Exception as e:
-                print(f"Error reading {xyz_path}: {e}")
-                failed_files += 1
-                continue
-
+            with open(xyz_path, "r") as f:
+                conformers.append(f.read())
         if conformers:
-            entries.append((inchi, conformers))
-            processed_molecules += 1
+            yield (inchi, conformers)
 
-        # Batch commit
-        if len(entries) >= batch_size:
-            batch_start = time.time()
-            written = store.put_many_conformers(entries)
-            batch_time = time.time() - batch_start
-            entries = []
 
-            # Stats
-            elapsed = time.time() - start_time
-            speed = processed_molecules / elapsed if elapsed > 0 else 0
-            print(f"[{elapsed:.1f}s] Processed {processed_molecules}/{total_molecules} molecules, "
-                  f"{processed_conformers} conformers, "
-                  f"Speed: {speed:.1f} mol/s, "
-                  f"Last batch: {written} in {batch_time:.2f}s")
+def build_sqlite_from_mapping(
+    mapping_file: str,
+    output_path: str,
+    batch_size: int = 1000,
+    xyz_path_column: str | None = None,
+    inchi_column: str | None = None,
+) -> dict:
+    """
+    Build SQLite database from a CSV mapping file (convenience wrapper).
 
-    # Final batch
-    if entries:
-        batch_start = time.time()
-        written = store.put_many_conformers(entries)
-        batch_time = time.time() - batch_start
-        elapsed = time.time() - start_time
-        speed = processed_molecules / elapsed if elapsed > 0 else 0
-        print(f"[{elapsed:.1f}s] Final batch: {written} molecules in {batch_time:.2f}s")
+    Args:
+        mapping_file: CSV file with xyz_path and inchi columns.
+        output_path: Path to output SQLite database.
+        batch_size: Molecules per write transaction.
+        xyz_path_column: Name of the xyz_path column in CSV.
+        inchi_column: Name of the inchi column in CSV.
 
-    total_time = time.time() - start_time
-    final_speed = processed_molecules / total_time if total_time > 0 else 0
-    print(f"\nDone. Total: {processed_molecules} molecules, {processed_conformers} conformers, "
-          f"{failed_files} failed files in {total_time:.2f}s ({final_speed:.1f} mol/s)")
+    Returns:
+        dict with keys: molecules, conformers, time_seconds
+    """
+    items = iter_mapping(mapping_file, xyz_path_column, inchi_column)
+    return build_sqlite_stream(items, output_path, batch_size)
 
 
 def run_build_sqlite():
-    """Run the SQLite build process with configuration support."""
+    """CLI entry point for SQLite database building."""
     parser = argparse.ArgumentParser(
         description="Build SQLite database from XYZ files with conformer support"
     )
@@ -145,8 +201,10 @@ def run_build_sqlite():
     )
 
     args = parser.parse_args()
-    main(args.mapping, args.output, args.batch_size,
-         args.xyz_path_column, args.inchi_column)
+    build_sqlite_from_mapping(
+        args.mapping, args.output, args.batch_size,
+        args.xyz_path_column, args.inchi_column,
+    )
 
 
 if __name__ == "__main__":
