@@ -26,13 +26,13 @@ Note: Use non-standard InChI (InChI=1/...) with Fixed-H option.
 import time
 import argparse
 from typing import Iterable, Iterator
-from ..core.sqlite import SQLiteMoleculeStore, ConflictMode
+from ..core.sqlite import SQLiteMoleculeStore, ConflictMode, ConformerInput
 import pandas as pd
 from ..config.config import config
 
 
 def build_sqlite_stream(
-    items: Iterable[tuple[str, list[str]]],
+    items: Iterable[tuple[str, list[ConformerInput]]],
     output_path: str,
     batch_size: int = 1000,
     on_conflict: ConflictMode = "overwrite",
@@ -47,7 +47,8 @@ def build_sqlite_stream(
     Args:
         items: Iterable of (inchi, conformers_list) pairs.
                Each inchi is a Fixed-H InChI string.
-               Each conformers_list is a list of XYZ content strings.
+               Each conformers_list is a list of conformers — bare XYZ strings
+               or dicts with \"xyz\" key and optional metadata.
         output_path: Path to output SQLite database file.
         batch_size: Number of molecules per write transaction.
         on_conflict: How to handle existing keys:
@@ -62,7 +63,7 @@ def build_sqlite_stream(
     store = SQLiteMoleculeStore(output_path)
     store.init_db()
 
-    batch: list[tuple[str, list[str]]] = []
+    batch: list[tuple[str, list[ConformerInput]]] = []
     stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
     total_conformers = 0
     start_time = time.time()

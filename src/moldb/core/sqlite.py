@@ -3,9 +3,12 @@ SQLite backend implementation for molecular structure data storage.
 
 Storage scheme:
     Key: {inchi}::meta    → {"count": N}
-    Key: {inchi}::conf_0  → xyz_string_0
+    Key: {inchi}::conf_0  → {"xyz": "...", ...}
     ...
-    Key: {inchi}::conf_{N-1}  → xyz_string_{N-1}
+    Key: {inchi}::conf_{N-1}  → {"xyz": "...", ...}
+
+Each conformer value is a JSON object. The only reserved key is "xyz".
+All other keys (energy, source, comment, etc.) are free-form and optional.
 
 Note: Use non-standard InChI (InChI=1/...) with Fixed-H option to distinguish tautomers.
 Standard InChI (InChI=1S/...) cannot have /f/h layer.
@@ -13,9 +16,11 @@ Standard InChI (InChI=1S/...) cannot have /f/h layer.
 import sqlite3
 import json
 import threading
-from typing import Optional, Iterable, Literal
+from typing import Optional, Iterable, Literal, Any, Union
 
 ConflictMode = Literal["overwrite", "skip", "merge"]
+ConformerData = dict[str, Any]          # returned from get_conformers — always has "xyz"
+ConformerInput = Union[str, ConformerData]  # accepted by put_conformers
 
 # Key suffixes for composite keys
 META_SUFFIX = "::meta"
@@ -69,6 +74,21 @@ class SQLiteMoleculeStore:
         """)
         self.conn.commit()
 
+    @staticmethod
+    def _serialize_conf(conf: ConformerInput) -> str:
+        """Serialize a conformer for storage. Bare str is treated as XYZ content."""
+        if isinstance(conf, str):
+            conf = {"xyz": conf}
+        return json.dumps(conf)
+
+    @staticmethod
+    def _deserialize_conf(content: str) -> ConformerData:
+        """Deserialize a conformer from storage. Handles legacy bare-XYZ format."""
+        if content.startswith("{"):
+            return json.loads(content)
+        # Legacy: bare XYZ string stored by older versions
+        return {"xyz": content}
+
     def exists(self, inchi: str) -> bool:
         """Check if a molecule entry exists."""
         cur = self.conn.execute(
@@ -113,7 +133,7 @@ class SQLiteMoleculeStore:
                 index_str = key.split(CONF_PREFIX)[-1]
                 index = int(index_str)
                 if 0 <= index < count:
-                    conformers[index] = content
+                    conformers[index] = self._deserialize_conf(content)
             except (ValueError, IndexError):
                 continue
 
@@ -172,7 +192,7 @@ class SQLiteMoleculeStore:
                     index_str = key.split(CONF_PREFIX)[-1]
                     index = int(index_str)
                     if 0 <= index < count:
-                        conformers[index] = content
+                        conformers[index] = self._deserialize_conf(content)
                 except (ValueError, IndexError):
                     continue
 
@@ -187,7 +207,7 @@ class SQLiteMoleculeStore:
     def put_conformers(
         self,
         inchi: str,
-        conformers: list[str],
+        conformers: list[ConformerInput],
         on_conflict: ConflictMode = "overwrite",
     ) -> dict:
         """
@@ -195,7 +215,9 @@ class SQLiteMoleculeStore:
 
         Args:
             inchi: Fixed-H InChI identifier.
-            conformers: List of XYZ strings, one per conformer.
+            conformers: List of conformers. Each can be a bare XYZ string
+                        or a dict with "xyz" key plus optional metadata
+                        (e.g. {"xyz": "...", "energy": -76.4}).
             on_conflict: How to handle existing entries:
                 - "overwrite": Replace existing data (default).
                 - "skip": Do nothing if entry already exists.
@@ -220,11 +242,11 @@ class SQLiteMoleculeStore:
                 return {"action": "skipped", "count": old_count}
 
             if on_conflict == "merge":
-                # Append-only: INSERT new conformer keys after existing ones
                 for i, conf in enumerate(conformers):
                     self.conn.execute(
                         "INSERT INTO molecules (key, content) VALUES (?, ?)",
-                        (self._make_conf_key(inchi, old_count + i), conf)
+                        (self._make_conf_key(inchi, old_count + i),
+                         self._serialize_conf(conf))
                     )
                 new_count = old_count + len(conformers)
                 self.conn.execute(
@@ -246,7 +268,7 @@ class SQLiteMoleculeStore:
         for i, conf in enumerate(conformers):
             self.conn.execute(
                 "INSERT INTO molecules (key, content) VALUES (?, ?)",
-                (self._make_conf_key(inchi, i), conf)
+                (self._make_conf_key(inchi, i), self._serialize_conf(conf))
             )
         self.conn.commit()
 
@@ -259,7 +281,7 @@ class SQLiteMoleculeStore:
 
     def put_many_conformers(
         self,
-        items: Iterable[tuple[str, list[str]]],
+        items: Iterable[tuple[str, list[ConformerInput]]],
         on_conflict: ConflictMode = "overwrite",
     ) -> dict:
         """
@@ -267,6 +289,7 @@ class SQLiteMoleculeStore:
 
         Args:
             items: Iterable of (inchi, conformers_list) pairs.
+                   Each conformer can be a bare XYZ string or a dict with metadata.
             on_conflict: How to handle existing entries:
                 - "overwrite": Replace existing data (default).
                 - "skip": Do nothing if entry already exists.
@@ -294,11 +317,11 @@ class SQLiteMoleculeStore:
                     continue
 
                 if on_conflict == "merge":
-                    # Append-only: INSERT new conformer keys after existing ones
                     for i, conf in enumerate(conformers):
                         self.conn.execute(
                             "INSERT INTO molecules (key, content) VALUES (?, ?)",
-                            (self._make_conf_key(inchi, old_count + i), conf)
+                            (self._make_conf_key(inchi, old_count + i),
+                             self._serialize_conf(conf))
                         )
                     new_count = old_count + len(conformers)
                     self.conn.execute(
@@ -323,7 +346,7 @@ class SQLiteMoleculeStore:
             for i, conf in enumerate(conformers):
                 self.conn.execute(
                     "INSERT INTO molecules (key, content) VALUES (?, ?)",
-                    (self._make_conf_key(inchi, i), conf)
+                    (self._make_conf_key(inchi, i), self._serialize_conf(conf))
                 )
 
         self.conn.commit()
@@ -358,31 +381,3 @@ class SQLiteMoleculeStore:
         self.conn.commit()
         return True
 
-    # --- Legacy API compatibility methods ---
-
-    def get_by_inchi(self, inchi: str) -> Optional[dict]:
-        """Retrieve molecule data by InChI (legacy compatible)."""
-        return self.get_conformers(inchi)
-
-    def get_many_by_inchi(self, inchis: list[str]) -> list[tuple[str, Optional[dict]]]:
-        """Retrieve multiple molecule data by InChI (legacy compatible)."""
-        return self.get_many_conformers(inchis)
-
-    def put(self, inchi: str, content: str) -> bool:
-        """
-        Store molecule data (legacy compatible - treats content as single conformer).
-
-        Always overwrites on conflict.
-        """
-        self.put_conformers(inchi, [content], on_conflict="overwrite")
-        return True
-
-    def put_many(self, items: Iterable[tuple[str, str]]) -> int:
-        """
-        Store many molecules (legacy compatible - treats each content as single conformer).
-
-        Always overwrites on conflict.
-        """
-        converted = ((inchi, [content]) for inchi, content in items)
-        result = self.put_many_conformers(converted, on_conflict="overwrite")
-        return result["written"] + result["overwritten"]
