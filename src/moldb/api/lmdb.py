@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from ..core.lmdb import LMDBMoleculeStore
 import uvicorn
-from typing import Optional
+from typing import Any
 from ..config.config import config
 import urllib.parse
 
@@ -30,7 +30,7 @@ class MoleculeResponse(BaseModel):
     """Response model for molecule data."""
     inchi: str
     count: int
-    conformers: list[str]
+    conformers: list[dict[str, Any]]
 
 
 class BatchMoleculeRequest(BaseModel):

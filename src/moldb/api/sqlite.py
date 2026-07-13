@@ -6,7 +6,7 @@ Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any
 from ..core.sqlite import SQLiteMoleculeStore
 import uvicorn
 from ..config.config import config
@@ -31,7 +31,7 @@ class MoleculeResponse(BaseModel):
     """Response model for molecule data."""
     inchi: str
     count: int
-    conformers: list[str]
+    conformers: list[dict[str, Any]]
 
 
 class BatchMoleculeRequest(BaseModel):

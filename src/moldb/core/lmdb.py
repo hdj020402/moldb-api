@@ -15,7 +15,7 @@ Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
 import json
 import lmdb
-from typing import Optional, Iterable, Literal, Any, Union
+from typing import Optional, Iterable, Literal, Any
 
 ConflictMode = Literal["overwrite", "skip", "merge"]
 ConformerData = dict[str, Any]  # always has "xyz" key
