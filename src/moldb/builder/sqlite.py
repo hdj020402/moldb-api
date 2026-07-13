@@ -28,7 +28,7 @@ import argparse
 from typing import Iterable, Iterator
 from ..core.sqlite import SQLiteMoleculeStore, ConflictMode, ConformerData
 import pandas as pd
-from ..config.config import config
+from ..config.config import BuilderSettings
 
 
 def build_sqlite_stream(
@@ -154,10 +154,11 @@ def iter_mapping(
     Yields:
         (inchi, [conformer_dict]) tuples
     """
+    builder = BuilderSettings()
     if xyz_path_column is None:
-        xyz_path_column = config.get_xyz_path_column()
+        xyz_path_column = builder.xyz_path_column
     if inchi_column is None:
-        inchi_column = config.get_inchi_column()
+        inchi_column = builder.inchi_column
 
     df = pd.read_csv(mapping_file)
 
@@ -206,6 +207,8 @@ def build_sqlite_from_mapping(
 
 def run_build_sqlite():
     """CLI entry point for SQLite database building."""
+    builder = BuilderSettings()
+
     parser = argparse.ArgumentParser(
         description="Build SQLite database from XYZ files with conformer support"
     )
@@ -216,7 +219,7 @@ def run_build_sqlite():
     )
     parser.add_argument(
         "--output",
-        default=config.get_sqlite_path(),
+        default="molecules.db",
         help="Output SQLite database path"
     )
     parser.add_argument(
@@ -234,12 +237,12 @@ def run_build_sqlite():
     parser.add_argument(
         "--xyz_path_column",
         default=None,
-        help=f"Name of the xyz_path column (default: {config.get_xyz_path_column()})"
+        help=f"Name of the xyz_path column (default: {builder.xyz_path_column})"
     )
     parser.add_argument(
         "--inchi_column",
         default=None,
-        help=f"Name of the fixed_h_inchi column (default: {config.get_inchi_column()})"
+        help=f"Name of the fixed_h_inchi column (default: {builder.inchi_column})"
     )
 
     args = parser.parse_args()

@@ -9,8 +9,10 @@ from pydantic import BaseModel
 from typing import Any
 from ..core.sqlite import SQLiteMoleculeStore
 import uvicorn
-from ..config.config import config
+from ..config.config import ApiSettings
 import urllib.parse
+
+settings = ApiSettings()
 
 # Create the FastAPI app
 app = FastAPI(
@@ -20,7 +22,7 @@ app = FastAPI(
 )
 
 # Get database path from configuration
-DB_PATH = config.get_sqlite_path()
+DB_PATH = settings.sqlite_path
 
 # Global store instance
 STORE = SQLiteMoleculeStore(DB_PATH)
@@ -103,8 +105,8 @@ def run_sqlite_api():
     """Run the SQLite API service."""
     uvicorn.run(
         "moldb.api.sqlite:app",
-        host=config.get_api_host(),
-        port=config.get_sqlite_api_port(),
+        host=settings.host,
+        port=settings.sqlite_port,
         reload=False
     )
 

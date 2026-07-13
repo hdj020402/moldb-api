@@ -9,8 +9,10 @@ from pydantic import BaseModel
 from ..core.lmdb import LMDBMoleculeStore
 import uvicorn
 from typing import Any
-from ..config.config import config
+from ..config.config import ApiSettings
 import urllib.parse
+
+settings = ApiSettings()
 
 # Create the FastAPI app
 app = FastAPI(
@@ -20,7 +22,7 @@ app = FastAPI(
 )
 
 # Get database path from configuration
-DB_PATH = config.get_lmdb_path()
+DB_PATH = settings.lmdb_path
 
 # Global store instance
 STORE = LMDBMoleculeStore(DB_PATH)
@@ -102,8 +104,8 @@ def run_lmdb_api():
     """Run the LMDB API service."""
     uvicorn.run(
         "moldb.api.lmdb:app",
-        host=config.get_api_host(),
-        port=config.get_lmdb_api_port(),
+        host=settings.host,
+        port=settings.lmdb_port,
         reload=False
     )
 

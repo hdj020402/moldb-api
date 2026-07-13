@@ -143,6 +143,26 @@ for conf in streaming_source:
     build_lmdb_stream([("InChI=1/A", [conf])], "molecules.lmdb", on_conflict="merge")
 ```
 
+## Configuration
+
+Copy the example config and edit as needed:
+
+```bash
+cp config/config.example.json config/config.json
+```
+
+All settings have reasonable defaults; the config file is optional.
+
+You can also override any value via environment variables:
+
+| Variable | Description |
+| -------- | ----------- |
+| `MOLECULES_LMDB_PATH` | LMDB database path |
+| `MOLECULES_DB_PATH` | SQLite database path |
+| `MOLECULES_API_HOST` | API host |
+| `MOLECULES_LMDB_API_PORT` | LMDB API port |
+| `MOLECULES_SQLITE_API_PORT` | SQLite API port |
+
 ## Running the API Service
 
 ```bash
@@ -152,16 +172,6 @@ moldb api lmdb
 # SQLite service (default port 8001)
 moldb api sqlite
 ```
-
-Configuration via environment variables:
-
-| Variable | Description |
-| -------- | ----------- |
-| `MOLECULES_LMDB_PATH` | LMDB database path |
-| `MOLECULES_DB_PATH` | SQLite database path |
-| `MOLECULES_API_HOST` | API host |
-| `MOLECULES_LMDB_API_PORT` | LMDB API port |
-| `MOLECULES_SQLITE_API_PORT` | SQLite API port |
 
 ## API Usage
 
@@ -219,8 +229,10 @@ Response:
 ```text
 moldb-api/
 ├── pyproject.toml          # Package configuration
-├── config.json             # Global configuration
 ├── main.py                 # Legacy entry point
+├── config/                 # Configuration
+│   ├── config.example.json # Example config (copy to config.json)
+│   └── config.json         # Local config (gitignored)
 ├── docs/                   # Documentation
 │   ├── API_DOCUMENTATION.md
 │   └── DESIGN.md           # Design philosophy (single-key vs multi-key)

@@ -1,97 +1,95 @@
 """
 Configuration module for moldb-api.
-Handles configuration from file, environment variables, and defaults.
+
+Loads defaults from config/config.json, overrides with environment variables.
+Split into ApiSettings and BuilderSettings so each module only depends
+on the settings it actually needs.
 """
 import os
 import json
 
-class Config:
-    """Configuration class for moldb-api."""
 
-    def __init__(self, config_file: str = "config.json"):
-        """Initialize configuration with optional config file."""
-        self.config_file = config_file
-        self._config = {}
+class ApiSettings:
+    """API service settings (host, port, DB paths)."""
 
-        # Load from config file if it exists
-        self._load_from_file()
+    def __init__(self, config_file: str = "config/config.json"):
+        self._data: dict = {}
+        self._load_file(config_file)
+        self._load_env()
 
-        # Override with environment variables
-        self._load_from_env()
+    def _load_file(self, path: str):
+        if not os.path.exists(path):
+            return
+        with open(path) as f:
+            api = json.load(f).get("api", {})
+        self._data["host"] = api.get("host", "0.0.0.0")
+        self._data["lmdb_path"] = api.get("lmdb", {}).get("path", "molecules.lmdb")
+        self._data["lmdb_port"] = api.get("lmdb", {}).get("port", 8000)
+        self._data["sqlite_path"] = api.get("sqlite", {}).get("path", "molecules.db")
+        self._data["sqlite_port"] = api.get("sqlite", {}).get("port", 8001)
 
-    def _load_from_file(self):
-        """Load configuration from JSON file."""
-        if os.path.exists(self.config_file):
-            try:
-                with open(self.config_file, 'r') as f:
-                    self._config = json.load(f)
-            except Exception as e:
-                print(f"Warning: Could not load config file {self.config_file}: {e}")
+    def _load_env(self):
+        mapping = [
+            ("MOLECULES_API_HOST", "host"),
+            ("MOLECULES_LMDB_PATH", "lmdb_path"),
+            ("MOLECULES_LMDB_API_PORT", "lmdb_port"),
+            ("MOLECULES_SQLITE_PATH", "sqlite_path"),    # alias: MOLECULES_DB_PATH
+            ("MOLECULES_SQLITE_API_PORT", "sqlite_port"),
+        ]
+        for env_key, field in mapping:
+            if env_key in os.environ:
+                self._data[field] = os.environ[env_key]
 
-    def _load_from_env(self):
-        """Load configuration from environment variables."""
-        # LMDB database path
-        lmdb_path = os.environ.get("MOLECULES_LMDB_PATH")
-        if lmdb_path:
-            self._config["lmdb_path"] = lmdb_path
+    @property
+    def host(self) -> str:
+        return self._data.get("host", "0.0.0.0")
 
-        # SQLite database path
-        sqlite_path = os.environ.get("MOLECULES_DB_PATH")
-        if sqlite_path:
-            self._config["sqlite_path"] = sqlite_path
+    @property
+    def lmdb_path(self) -> str:
+        return self._data.get("lmdb_path", "molecules.lmdb")
 
-        # API service host
-        api_host = os.environ.get("MOLECULES_API_HOST")
-        if api_host:
-            self._config["api_host"] = api_host
+    @property
+    def lmdb_port(self) -> int:
+        return int(self._data.get("lmdb_port", 8000))
 
-        # LMDB API service port
-        lmdb_api_port = os.environ.get("MOLECULES_LMDB_API_PORT")
-        if lmdb_api_port:
-            self._config["lmdb_api_port"] = int(lmdb_api_port)
+    @property
+    def sqlite_path(self) -> str:
+        return self._data.get("sqlite_path", "molecules.db")
 
-        # SQLite API service port
-        sqlite_api_port = os.environ.get("MOLECULES_SQLITE_API_PORT")
-        if sqlite_api_port:
-            self._config["sqlite_api_port"] = int(sqlite_api_port)
+    @property
+    def sqlite_port(self) -> int:
+        return int(self._data.get("sqlite_port", 8001))
 
-        # XYZ path column name
-        xyz_path_column = os.environ.get("MOLECULES_XYZ_PATH_COLUMN")
-        if xyz_path_column:
-            self._config["xyz_path_column"] = xyz_path_column
 
-        # Fixed-H InChI column name
-        inchi_column = os.environ.get("MOLECULES_INCHI_COLUMN")
-        if inchi_column:
-            self._config["inchi_column"] = inchi_column
+class BuilderSettings:
+    """Builder settings (column name defaults for CSV mapping files)."""
 
-    def get_lmdb_path(self) -> str:
-        """Get LMDB database path."""
-        return self._config.get("lmdb_path", "molecules.lmdb")
+    def __init__(self, config_file: str = "config/config.json"):
+        self._data: dict = {}
+        self._load_file(config_file)
+        self._load_env()
 
-    def get_sqlite_path(self) -> str:
-        """Get SQLite database path."""
-        return self._config.get("sqlite_path", "molecules.db")
+    def _load_file(self, path: str):
+        if not os.path.exists(path):
+            return
+        with open(path) as f:
+            mapping = json.load(f).get("builder", {}).get("mapping", {})
+        self._data["xyz_path_column"] = mapping.get("xyz_path_column", "xyz_path")
+        self._data["inchi_column"] = mapping.get("inchi_column", "fixed_h_inchi")
 
-    def get_api_host(self) -> str:
-        """Get API service host."""
-        return self._config.get("api_host", "0.0.0.0")
+    def _load_env(self):
+        mapping = [
+            ("MOLECULES_XYZ_PATH_COLUMN", "xyz_path_column"),
+            ("MOLECULES_INCHI_COLUMN", "inchi_column"),
+        ]
+        for env_key, field in mapping:
+            if env_key in os.environ:
+                self._data[field] = os.environ[env_key]
 
-    def get_lmdb_api_port(self) -> int:
-        """Get LMDB API service port."""
-        return self._config.get("lmdb_api_port", 8000)
+    @property
+    def xyz_path_column(self) -> str:
+        return self._data.get("xyz_path_column", "xyz_path")
 
-    def get_sqlite_api_port(self) -> int:
-        """Get SQLite API service port."""
-        return self._config.get("sqlite_api_port", 8001)
-
-    def get_xyz_path_column(self) -> str:
-        """Get XYZ path column name in CSV."""
-        return self._config.get("xyz_path_column", "xyz_path")
-
-    def get_inchi_column(self) -> str:
-        """Get Fixed-H InChI column name in CSV."""
-        return self._config.get("inchi_column", "fixed_h_inchi")
-
-# Global configuration instance
-config = Config()
+    @property
+    def inchi_column(self) -> str:
+        return self._data.get("inchi_column", "fixed_h_inchi")

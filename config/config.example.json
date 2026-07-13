@@ -1,0 +1,19 @@
+{
+  "api": {
+    "host": "0.0.0.0",
+    "lmdb": {
+      "path": "molecules.lmdb",
+      "port": 8000
+    },
+    "sqlite": {
+      "path": "molecules.db",
+      "port": 8001
+    }
+  },
+  "builder": {
+    "mapping": {
+      "xyz_path_column": "xyz_path",
+      "inchi_column": "fixed_h_inchi"
+    }
+  }
+}
