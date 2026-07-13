@@ -5,10 +5,11 @@ High-performance molecular structure data storage and query service with conform
 ## Features
 
 - **Conformer-aware storage**: Store multiple conformers per molecule
+- **Flexible metadata**: Each conformer carries arbitrary key-value pairs (energy, source, method, etc.)
+- **Streaming writes**: Build databases directly from preprocessing pipelines without intermediate files
+- **Conflict resolution**: `overwrite` / `skip` / `merge` strategies for incremental and streaming workflows
 - **Dual storage backends**: LMDB (read-heavy optimization) and SQLite (simple deployment)
-- **High performance**: Support for millions of molecules and conformers
 - **RESTful API**: FastAPI-based query service
-- **Flexible data import**: CLI tool or direct API calls
 
 ## Important Note on InChI
 
@@ -46,17 +47,64 @@ Each molecule's conformers are stored as separate key-value pairs:
 
 ```text
 Key: {fixed_h_inchi}::meta    → {"count": N}
-Key: {fixed_h_inchi}::conf_0  → "xyz_string_0"
-Key: {fixed_h_inchi}::conf_1  → "xyz_string_1"
+Key: {fixed_h_inchi}::conf_0  → {"xyz": "...", "energy": -76.4, ...}
+Key: {fixed_h_inchi}::conf_1  → {"xyz": "...", ...}
 ...
-Key: {fixed_h_inchi}::conf_{N-1}  → "xyz_string_{N-1}"
+Key: {fixed_h_inchi}::conf_{N-1}  → {"xyz": "...", ...}
 ```
+
+Each conformer value is a JSON object. The only reserved key is `"xyz"`;
+all other keys (`energy`, `source`, `method`, etc.) are free-form and optional.
+
+See [docs/DESIGN.md](docs/DESIGN.md) for the rationale behind the multi-key schema.
 
 ## Building the Database
 
-### Method 1: CLI Tool
+### Method 1: Stream-based (recommended for pipelines)
 
-Prepare a CSV file with two columns: `xyz_path` and `fixed_h_inchi`:
+Feed conformer data directly from a preprocessing pipeline — no intermediate files needed:
+
+```python
+from moldb.builder.lmdb import build_lmdb_stream
+
+def my_pipeline(xyz_dir):
+    """Your preprocessing logic."""
+    for xyz_file in sorted(glob(f"{xyz_dir}/*.xyz")):
+        for mol in parse_molecules(xyz_file):
+            inchi = generate_fixed_h_inchi(mol)
+            standardized = standardize_atoms(mol)
+            yield (inchi, [{"xyz": standardized}])
+
+build_lmdb_stream(my_pipeline("./raw_xyzs/"), "molecules.lmdb")
+```
+
+### Method 2: Direct store API
+
+```python
+from moldb.core.lmdb import LMDBMoleculeStore
+
+store = LMDBMoleculeStore("molecules.lmdb")
+
+# Store conformers (each is a dict with "xyz" key)
+conformers = [
+    {"xyz": "3\n\nO  0.000  0.000  0.000\nH  0.757  0.586  0.000\nH -0.757  0.586  0.000"},
+    {"xyz": "3\n\nO  0.001  0.001  0.001\nH  0.758  0.587  0.001\nH -0.756  0.587  0.001",
+     "energy": -76.4, "method": "B3LYP/6-31G*"},
+]
+store.put_conformers("InChI=1/H2O/h1H2", conformers)
+
+# Query
+data = store.get_conformers("InChI=1/H2O/h1H2")
+print(f"Found {data['count']} conformers")
+for conf in data["conformers"]:
+    print(conf["xyz"][:50])
+
+store.close()
+```
+
+### Method 3: CLI (from mapping file)
+
+Prepare a CSV file with `xyz_path` and `fixed_h_inchi` columns:
 
 ```csv
 xyz_path,fixed_h_inchi
@@ -65,36 +113,34 @@ xyz_path,fixed_h_inchi
 /path/to/mol2_conf1.xyz,InChI=1/C3H7NO/.../f/h5H2
 ```
 
-Build the database:
-
 ```bash
 # LMDB backend
-moldb builder lmdb --mapping conformers.csv --output molecules.lmdb
+moldb builder lmdb --mapping mapping.csv --output molecules.lmdb
 
 # SQLite backend
-moldb builder sqlite --mapping conformers.csv --output molecules.db
+moldb builder sqlite --mapping mapping.csv --output molecules.db
+
+# With conflict resolution strategy
+moldb builder lmdb --mapping new_data.csv --output molecules.lmdb --on_conflict skip
 ```
 
-### Method 2: Direct API Calls
+### Conflict Resolution (`on_conflict`)
+
+When writing to an existing database, control what happens on key collisions:
+
+| Mode | DB has key | DB lacks key |
+| ---- | ---------- | ------------ |
+| `overwrite` (default) | Replace all conformers | Write new |
+| `skip` | Do nothing, keep old data | Write new |
+| `merge` | Append new conformers to existing | Write new |
 
 ```python
-from moldb.core.lmdb import LMDBMoleculeStore
+# Incremental build: only write new molecules, skip existing
+build_lmdb_stream(batch_2, "molecules.lmdb", on_conflict="skip")
 
-# Initialize store
-store = LMDBMoleculeStore("molecules.lmdb")
-
-# Store conformers
-conformers = [
-    "3\n\nO    0.000  0.000  0.000\nH    0.757  0.586  0.000\nH   -0.757  0.586  0.000",
-    "3\n\nO    0.001  0.001  0.001\nH    0.758  0.587  0.001\nH   -0.756  0.587  0.001",
-]
-store.put_conformers("InChI=1/H2O/h1H2", conformers)
-
-# Query conformers
-data = store.get_conformers("InChI=1/H2O/h1H2")
-print(f"Found {data['count']} conformers")
-
-store.close()
+# Streaming: conformers arrive one at a time for the same molecule
+for conf in streaming_source:
+    build_lmdb_stream([("InChI=1/A", [conf])], "molecules.lmdb", on_conflict="merge")
 ```
 
 ## Running the API Service
@@ -122,7 +168,6 @@ Configuration via environment variables:
 ### Query Single Molecule
 
 ```bash
-# Note: InChI must match your database format (InChI=1/... or InChI=1S/...)
 curl "http://localhost:8000/molecule/InChI=1/H2O/h1H2"
 ```
 
@@ -133,8 +178,14 @@ Response:
   "inchi": "InChI=1/H2O/h1H2",
   "count": 2,
   "conformers": [
-    "3\n\nO    0.000  0.000  0.000\nH    0.757  0.586  0.000\nH   -0.757  0.586  0.000",
-    "3\n\nO    0.001  0.001  0.001\nH    0.758  0.587  0.001\nH   -0.756  0.587  0.001"
+    {
+      "xyz": "3\n\nO  0.000  0.000  0.000\nH  0.757  0.586  0.000\nH -0.757  0.586  0.000"
+    },
+    {
+      "xyz": "3\n\nO  0.001  0.001  0.001\nH  0.758  0.587  0.001\nH -0.756  0.587  0.001",
+      "energy": -76.4,
+      "method": "B3LYP/6-31G*"
+    }
   ]
 }
 ```
@@ -144,7 +195,7 @@ Response:
 ```bash
 curl -X POST http://localhost:8000/molecules/batch \
   -H "Content-Type: application/json" \
-  -d '{"inchis": ["InChI=1/H2O/h1H2", "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3"]}'
+  -d '{"inchis": ["InChI=1/H2O/h1H2", "InChI=1/NOPE"]}'
 ```
 
 Response:
@@ -154,9 +205,12 @@ Response:
   "InChI=1/H2O/h1H2": {
     "inchi": "InChI=1/H2O/h1H2",
     "count": 2,
-    "conformers": ["...", "..."]
+    "conformers": [
+      {"xyz": "..."},
+      {"xyz": "..."}
+    ]
   },
-  "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3": null
+  "InChI=1/NOPE": null
 }
 ```
 
@@ -167,6 +221,14 @@ moldb-api/
 ├── pyproject.toml          # Package configuration
 ├── config.json             # Global configuration
 ├── main.py                 # Legacy entry point
+├── docs/                   # Documentation
+│   ├── API_DOCUMENTATION.md
+│   └── DESIGN.md           # Design philosophy (single-key vs multi-key)
+├── tests/                  # Unit tests
+│   ├── conftest.py
+│   ├── test_core_lmdb.py
+│   ├── test_core_sqlite.py
+│   └── test_builder.py
 └── src/moldb/
     ├── __init__.py
     ├── cli.py              # CLI entry point
@@ -190,4 +252,5 @@ moldb-api/
 - **LMDB**: Optimized for read-heavy workloads, recommended for large-scale deployments
 - **SQLite**: Simpler deployment, suitable for moderate workloads
 - **Batch writes**: Use `put_many_conformers()` for efficient bulk imports
+- **Streaming writes**: Use `build_lmdb_stream()` with an iterable to avoid intermediate files
 - **Conformer count**: No hard limit; tested with up to 1000 conformers per molecule

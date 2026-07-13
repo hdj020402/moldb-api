@@ -19,7 +19,7 @@ Base URL: `http://localhost:8000` (default)
 
 ### Health Check
 
-**GET /**
+#### GET /
 
 Returns service status information.
 
@@ -34,7 +34,7 @@ Returns service status information.
 
 ### Get Molecule by InChI
 
-**GET /molecule/{inchi}**
+#### GET /molecule/{inchi}
 
 Retrieve all conformers for a molecule by Fixed-H InChI.
 
@@ -71,11 +71,20 @@ curl "http://localhost:8000/molecule/$encoded_inchi"
   "inchi": "InChI=1/H2O/h1H2",
   "count": 2,
   "conformers": [
-    "3\n\nO    0.000  0.000  0.000\nH    0.757  0.586  0.000\nH   -0.757  0.586  0.000",
-    "3\n\nO    0.001  0.001  0.001\nH    0.758  0.587  0.001\nH   -0.756  0.587  0.001"
+    {
+      "xyz": "3\n\nO  0.000  0.000  0.000\nH  0.757  0.586  0.000\nH -0.757  0.586  0.000"
+    },
+    {
+      "xyz": "3\n\nO  0.001  0.001  0.001\nH  0.758  0.587  0.001\nH -0.756  0.587  0.001",
+      "energy": -76.4,
+      "method": "B3LYP/6-31G*"
+    }
   ]
 }
 ```
+
+Each conformer is a JSON object with a required `"xyz"` key containing the XYZ content.
+Additional keys (`energy`, `source`, `method`, etc.) are optional and stored as-is.
 
 **Error Responses:**
 
@@ -83,7 +92,7 @@ curl "http://localhost:8000/molecule/$encoded_inchi"
 
 ### Batch Query Molecules
 
-**POST /molecules/batch**
+#### POST /molecules/batch
 
 Retrieve multiple molecules' conformers in a single request.
 
@@ -105,7 +114,10 @@ Retrieve multiple molecules' conformers in a single request.
   "InChI=1/H2O/h1H2": {
     "inchi": "InChI=1/H2O/h1H2",
     "count": 2,
-    "conformers": ["xyz_string_1", "xyz_string_2"]
+    "conformers": [
+      {"xyz": "..."},
+      {"xyz": "..."}
+    ]
   },
   "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3": null
 }
@@ -123,7 +135,7 @@ The SQLite backend has identical API endpoints to the LMDB backend.
 
 ### Health Check
 
-**GET /**
+#### GET /
 
 **Response:**
 
@@ -136,13 +148,13 @@ The SQLite backend has identical API endpoints to the LMDB backend.
 
 ### Get Molecule by InChI
 
-**GET /molecule/{inchi}**
+#### GET /molecule/{inchi}
 
 Same as LMDB backend.
 
 ### Batch Query Molecules
 
-**POST /molecules/batch**
+#### POST /molecules/batch
 
 Same as LMDB backend.
 
@@ -153,12 +165,12 @@ Same as LMDB backend.
 ```python
 from moldb.util.query_molecule import query_molecule, query_molecules_batch
 
-# Query single molecule (use the InChI format from your database)
+# Query single molecule
 data = query_molecule("InChI=1/H2O/h1H2")
 if data:
     print(f"Found {data['count']} conformers")
     for i, conf in enumerate(data['conformers']):
-        print(f"Conformer {i}: {conf[:50]}...")
+        print(f"Conformer {i}: {conf['xyz'][:50]}...")
 
 # Batch query
 results = query_molecules_batch([
