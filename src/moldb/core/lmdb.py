@@ -177,8 +177,13 @@ class LMDBMoleculeStore:
                     return {"action": "skipped", "count": old_count}
 
                 if on_conflict == "merge":
-                    old_conformers = self._read_existing_conformers(txn, inchi, old_count)
-                    conformers = old_conformers + conformers
+                    # Append-only: write new conformers starting at old_count,
+                    # leaving existing conformer keys untouched.
+                    for i, conf in enumerate(conformers):
+                        txn.put(self._make_conf_key(inchi, old_count + i), conf.encode("utf-8"))
+                    new_count = old_count + len(conformers)
+                    txn.put(meta_key, json.dumps({"count": new_count}).encode("utf-8"))
+                    return {"action": "merged", "count": new_count}
 
                 if on_conflict == "overwrite":
                     # Clean up stale conformer keys (if new count is smaller)
@@ -195,8 +200,6 @@ class LMDBMoleculeStore:
 
             if existing is None:
                 action = "written"
-            elif on_conflict == "merge":
-                action = "merged"
             else:
                 action = "overwritten"
 
@@ -236,11 +239,16 @@ class LMDBMoleculeStore:
                         continue
 
                     if on_conflict == "merge":
-                        old_conformers = self._read_existing_conformers(txn, inchi, old_count)
-                        conformers = old_conformers + conformers
+                        # Append-only: write new conformers after existing ones
+                        for i, conf in enumerate(conformers):
+                            txn.put(self._make_conf_key(inchi, old_count + i), conf.encode("utf-8"))
+                        new_count = old_count + len(conformers)
+                        txn.put(meta_key, json.dumps({"count": new_count}).encode("utf-8"))
                         stats["merged"] += 1
-                    else:
-                        # overwrite: clean up stale conformer keys
+                        continue
+
+                    if on_conflict == "overwrite":
+                        # Clean up stale conformer keys (if new count is smaller)
                         if old_count > len(conformers):
                             for i in range(len(conformers), old_count):
                                 txn.delete(self._make_conf_key(inchi, i))
@@ -248,24 +256,13 @@ class LMDBMoleculeStore:
                 else:
                     stats["written"] += 1
 
-                # Write meta and conformers
+                # Write meta and conformers (overwrite and first-write paths)
                 meta = {"count": len(conformers)}
                 txn.put(meta_key, json.dumps(meta).encode("utf-8"))
                 for i, conf in enumerate(conformers):
                     txn.put(self._make_conf_key(inchi, i), conf.encode("utf-8"))
 
         return stats
-
-    @staticmethod
-    def _read_existing_conformers(txn, inchi: str, count: int) -> list[str]:
-        """Read existing conformers within an active transaction."""
-        result = []
-        for i in range(count):
-            conf_key = (inchi + CONF_PREFIX + f"{i:06d}").encode("utf-8")
-            data = txn.get(conf_key)
-            if data is not None:
-                result.append(data.decode("utf-8"))
-        return result
 
     def delete(self, inchi: str) -> bool:
         """

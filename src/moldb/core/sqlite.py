@@ -220,14 +220,24 @@ class SQLiteMoleculeStore:
                 return {"action": "skipped", "count": old_count}
 
             if on_conflict == "merge":
-                old_data = self.get_conformers(inchi)
-                if old_data is not None:
-                    conformers = old_data["conformers"] + conformers
+                # Append-only: INSERT new conformer keys after existing ones
+                for i, conf in enumerate(conformers):
+                    self.conn.execute(
+                        "INSERT INTO molecules (key, content) VALUES (?, ?)",
+                        (self._make_conf_key(inchi, old_count + i), conf)
+                    )
+                new_count = old_count + len(conformers)
+                self.conn.execute(
+                    "UPDATE molecules SET content = ? WHERE key = ?",
+                    (json.dumps({"count": new_count}), meta_key)
+                )
+                self.conn.commit()
+                return {"action": "merged", "count": new_count}
 
-            # Delete existing entries (both overwrite and merge)
-            self._delete_inchi(inchi)
+            if on_conflict == "overwrite":
+                self._delete_inchi(inchi)
 
-        # Write new entries
+        # Write new entries (first-write and overwrite paths)
         meta = {"count": len(conformers)}
         self.conn.execute(
             "INSERT INTO molecules (key, content) VALUES (?, ?)",
@@ -242,8 +252,6 @@ class SQLiteMoleculeStore:
 
         if existing is None:
             action = "written"
-        elif on_conflict == "merge":
-            action = "merged"
         else:
             action = "overwritten"
 
@@ -277,23 +285,36 @@ class SQLiteMoleculeStore:
             existing = cur.fetchone()
 
             if existing is not None:
+                old_meta_data = existing[0]
+                old_meta = json.loads(old_meta_data)
+                old_count = old_meta["count"]
+
                 if on_conflict == "skip":
                     stats["skipped"] += 1
                     continue
 
                 if on_conflict == "merge":
-                    old_data = self.get_conformers(inchi)
-                    if old_data is not None:
-                        conformers = old_data["conformers"] + conformers
+                    # Append-only: INSERT new conformer keys after existing ones
+                    for i, conf in enumerate(conformers):
+                        self.conn.execute(
+                            "INSERT INTO molecules (key, content) VALUES (?, ?)",
+                            (self._make_conf_key(inchi, old_count + i), conf)
+                        )
+                    new_count = old_count + len(conformers)
+                    self.conn.execute(
+                        "UPDATE molecules SET content = ? WHERE key = ?",
+                        (json.dumps({"count": new_count}), meta_key)
+                    )
                     stats["merged"] += 1
-                else:
-                    stats["overwritten"] += 1
+                    continue
 
-                self._delete_inchi(inchi)
+                if on_conflict == "overwrite":
+                    self._delete_inchi(inchi)
+                    stats["overwritten"] += 1
             else:
                 stats["written"] += 1
 
-            # Write meta and conformers
+            # Write meta and conformers (first-write and overwrite paths)
             meta = {"count": len(conformers)}
             self.conn.execute(
                 "INSERT INTO molecules (key, content) VALUES (?, ?)",
