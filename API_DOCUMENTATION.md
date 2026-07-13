@@ -5,6 +5,7 @@
 **This database requires non-standard (Fixed-H) InChI** to distinguish tautomers.
 
 **Format rules**:
+
 - `InChI=1S/...` - Standard InChI (cannot have `/f/h` layer)
 - `InChI=1/...` - Non-standard InChI (may have `/f/h` if molecule has ambiguous hydrogens)
 
@@ -23,6 +24,7 @@ Base URL: `http://localhost:8000` (default)
 Returns service status information.
 
 **Response:**
+
 ```json
 {
   "message": "moldb-api - LMDB Backend is running",
@@ -37,6 +39,7 @@ Returns service status information.
 Retrieve all conformers for a molecule by Fixed-H InChI.
 
 **Path Parameters:**
+
 - `inchi` (string, required): Fixed-H InChI identifier (URL encoded)
 
 **Note:**
@@ -45,6 +48,7 @@ InChI identifiers contain special characters that must be URL encoded when used 
 **URL Encoding Examples:**
 
 Python:
+
 ```python
 import urllib.parse
 inchi = "InChI=1/H2O/h1H2"  # non-standard (Fixed-H) InChI
@@ -52,6 +56,7 @@ encoded_inchi = urllib.parse.quote(inchi, safe='')
 ```
 
 cURL:
+
 ```bash
 # URL encode the InChI before sending
 inchi="InChI=1/H2O/h1H2"
@@ -60,6 +65,7 @@ curl "http://localhost:8000/molecule/$encoded_inchi"
 ```
 
 **Response (200):**
+
 ```json
 {
   "inchi": "InChI=1/H2O/h1H2",
@@ -72,6 +78,7 @@ curl "http://localhost:8000/molecule/$encoded_inchi"
 ```
 
 **Error Responses:**
+
 - 404: Molecule not found
 
 ### Batch Query Molecules
@@ -81,6 +88,7 @@ curl "http://localhost:8000/molecule/$encoded_inchi"
 Retrieve multiple molecules' conformers in a single request.
 
 **Request Body:**
+
 ```json
 {
   "inchis": [
@@ -91,6 +99,7 @@ Retrieve multiple molecules' conformers in a single request.
 ```
 
 **Response (200):**
+
 ```json
 {
   "InChI=1/H2O/h1H2": {
@@ -117,6 +126,7 @@ The SQLite backend has identical API endpoints to the LMDB backend.
 **GET /**
 
 **Response:**
+
 ```json
 {
   "message": "moldb-api - SQLite Backend is running",

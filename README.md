@@ -17,10 +17,12 @@ High-performance molecular structure data storage and query service with conform
 Standard InChI (`InChI=1S/...`) treats tautomers as equivalent (e.g., `(H2,4,5)` indicates equivalent hydrogens). Non-standard InChI with Fixed-H layer specifies exact hydrogen positions.
 
 **Format rules**:
+
 - `InChI=1S/...` - Standard InChI (cannot have `/f/h` layer)
 - `InChI=1/...` - Non-standard InChI (may have `/f/h` if molecule has ambiguous hydrogens)
 
 **Examples**:
+
 - Standard: `InChI=1S/H2O/h1H2`
 - Non-standard (no ambiguous H): `InChI=1/H2O/h1H2`
 - Non-standard Fixed-H (ambiguous H fixed): `InChI=1/C3H7NO/.../f/h4H2`
@@ -42,7 +44,7 @@ pip install -e .
 
 Each molecule's conformers are stored as separate key-value pairs:
 
-```
+```text
 Key: {fixed_h_inchi}::meta    → {"count": N}
 Key: {fixed_h_inchi}::conf_0  → "xyz_string_0"
 Key: {fixed_h_inchi}::conf_1  → "xyz_string_1"
@@ -108,7 +110,7 @@ moldb api sqlite
 Configuration via environment variables:
 
 | Variable | Description |
-|----------|-------------|
+| -------- | ----------- |
 | `MOLECULES_LMDB_PATH` | LMDB database path |
 | `MOLECULES_DB_PATH` | SQLite database path |
 | `MOLECULES_API_HOST` | API host |
@@ -125,6 +127,7 @@ curl "http://localhost:8000/molecule/InChI=1/H2O/h1H2"
 ```
 
 Response:
+
 ```json
 {
   "inchi": "InChI=1/H2O/h1H2",
@@ -145,6 +148,7 @@ curl -X POST http://localhost:8000/molecules/batch \
 ```
 
 Response:
+
 ```json
 {
   "InChI=1/H2O/h1H2": {
@@ -158,7 +162,7 @@ Response:
 
 ## Project Structure
 
-```
+```text
 moldb-api/
 ├── pyproject.toml          # Package configuration
 ├── config.json             # Global configuration
