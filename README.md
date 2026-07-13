@@ -153,16 +153,6 @@ cp config/config.example.json config/config.json
 
 All settings have reasonable defaults; the config file is optional.
 
-You can also override any value via environment variables:
-
-| Variable | Description |
-| -------- | ----------- |
-| `MOLECULES_LMDB_PATH` | LMDB database path |
-| `MOLECULES_DB_PATH` | SQLite database path |
-| `MOLECULES_API_HOST` | API host |
-| `MOLECULES_LMDB_API_PORT` | LMDB API port |
-| `MOLECULES_SQLITE_API_PORT` | SQLite API port |
-
 ## Running the API Service
 
 ```bash
