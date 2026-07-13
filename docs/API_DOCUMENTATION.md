@@ -157,30 +157,3 @@ Same as LMDB backend.
 #### POST /molecules/batch
 
 Same as LMDB backend.
-
----
-
-## Using the Python Helper
-
-```python
-from moldb.util.query_molecule import query_molecule, query_molecules_batch
-
-# Query single molecule
-data = query_molecule("InChI=1/H2O/h1H2")
-if data:
-    print(f"Found {data['count']} conformers")
-    for i, conf in enumerate(data['conformers']):
-        print(f"Conformer {i}: {conf['xyz'][:50]}...")
-
-# Batch query
-results = query_molecules_batch([
-    "InChI=1/H2O/h1H2",
-    "InChI=1/C2H6O/c1-2-3/h3H,2H2,1H3"
-])
-
-for inchi, data in results.items():
-    if data:
-        print(f"{inchi}: {data['count']} conformers")
-    else:
-        print(f"{inchi}: not found")
-```

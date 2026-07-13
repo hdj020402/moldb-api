@@ -243,10 +243,8 @@ moldb-api/
     ├── builder/            # Database building tools
     │   ├── lmdb.py         # LMDB builder
     │   └── sqlite.py       # SQLite builder
-    ├── config/             # Configuration management
-    │   └── config.py
-    └── util/               # Utility functions
-        └── query_molecule.py
+    └── config/             # Configuration management
+        └── config.py
 ```
 
 ## Performance Considerations
