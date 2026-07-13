@@ -61,12 +61,39 @@ class BuilderSettings:
         if not os.path.exists(path):
             return {}
         with open(path) as f:
-            mapping = json.load(f).get("builder", {}).get("mapping", {})
+            cfg = json.load(f)
+            builder = cfg.get("builder", {})
+            mapping = builder.get("mapping", {})
         return {
+            "lmdb_path": builder.get("lmdb", {}).get("path", "molecules.lmdb"),
+            "lmdb_map_size": builder.get("lmdb", {}).get("map_size_gb", 30) * 1024 ** 3,
+            "sqlite_path": builder.get("sqlite", {}).get("path", "molecules.db"),
+            "batch_size": builder.get("batch_size", 1000),
+            "on_conflict": builder.get("on_conflict", "overwrite"),
             "mapping_file": mapping.get("file"),
             "xyz_path_column": mapping.get("xyz_path_column", "xyz_path"),
             "inchi_column": mapping.get("inchi_column", "fixed_h_inchi"),
         }
+
+    @property
+    def lmdb_path(self) -> str:
+        return self._data.get("lmdb_path", "molecules.lmdb")
+
+    @property
+    def lmdb_map_size(self) -> int:
+        return self._data.get("lmdb_map_size", 30 * 1024 ** 3)
+
+    @property
+    def sqlite_path(self) -> str:
+        return self._data.get("sqlite_path", "molecules.db")
+
+    @property
+    def batch_size(self) -> int:
+        return self._data.get("batch_size", 1000)
+
+    @property
+    def on_conflict(self) -> str:
+        return self._data.get("on_conflict", "overwrite")
 
     @property
     def mapping_file(self) -> str | None:

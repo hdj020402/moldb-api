@@ -219,20 +219,20 @@ def run_build_sqlite():
     )
     parser.add_argument(
         "--output",
-        default="molecules.db",
+        default=builder.sqlite_path,
         help="Output SQLite database path"
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=1000,
-        help="Number of molecules per write transaction"
+        default=builder.batch_size,
+        help=f"Number of molecules per write transaction (default: {builder.batch_size})"
     )
     parser.add_argument(
         "--on_conflict",
-        default="overwrite",
+        default=builder.on_conflict,
         choices=["overwrite", "skip", "merge"],
-        help="Conflict resolution strategy (default: overwrite)"
+        help=f"Conflict resolution strategy (default: {builder.on_conflict})"
     )
     parser.add_argument(
         "--xyz_path_column",

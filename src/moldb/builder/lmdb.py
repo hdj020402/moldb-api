@@ -224,26 +224,26 @@ def run_build_lmdb():
     )
     parser.add_argument(
         "--output",
-        default="molecules.lmdb",
+        default=builder.lmdb_path,
         help="Output LMDB database path"
     )
     parser.add_argument(
         "--map_size",
         type=int,
-        default=30 * 1024 ** 3,
-        help="Maximum size of the database in bytes (default: 30GB)"
+        default=builder.lmdb_map_size,
+        help=f"Maximum size of the database in bytes (default: {builder.lmdb_map_size // 1024**3}GB)"
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=1000,
-        help="Number of molecules per write transaction"
+        default=builder.batch_size,
+        help=f"Number of molecules per write transaction (default: {builder.batch_size})"
     )
     parser.add_argument(
         "--on_conflict",
-        default="overwrite",
+        default=builder.on_conflict,
         choices=["overwrite", "skip", "merge"],
-        help="Conflict resolution strategy (default: overwrite)"
+        help=f"Conflict resolution strategy (default: {builder.on_conflict})"
     )
     parser.add_argument(
         "--xyz_path_column",
