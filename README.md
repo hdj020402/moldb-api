@@ -114,7 +114,7 @@ xyz_path,fixed_h_inchi
 ```
 
 ```bash
-# LMDB backend
+# LMDB backend (--mapping defaults to builder.mapping.file in config.json)
 moldb builder lmdb --mapping mapping.csv --output molecules.lmdb
 
 # SQLite backend

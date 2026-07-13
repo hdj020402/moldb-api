@@ -12,6 +12,7 @@
   },
   "builder": {
     "mapping": {
+      "file": null,
       "xyz_path_column": "xyz_path",
       "inchi_column": "fixed_h_inchi"
     }

@@ -219,7 +219,7 @@ def run_build_lmdb():
     )
     parser.add_argument(
         "--mapping",
-        required=True,
+        default=builder.mapping_file,
         help="CSV file with xyz_path and fixed_h_inchi columns"
     )
     parser.add_argument(
@@ -257,6 +257,8 @@ def run_build_lmdb():
     )
 
     args = parser.parse_args()
+    if not args.mapping:
+        parser.error("--mapping is required (or set builder.mapping.file in config.json)")
     build_lmdb_from_mapping(
         args.mapping, args.output, args.map_size, args.batch_size,
         args.on_conflict, args.xyz_path_column, args.inchi_column,

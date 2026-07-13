@@ -63,9 +63,14 @@ class BuilderSettings:
         with open(path) as f:
             mapping = json.load(f).get("builder", {}).get("mapping", {})
         return {
+            "mapping_file": mapping.get("file"),
             "xyz_path_column": mapping.get("xyz_path_column", "xyz_path"),
             "inchi_column": mapping.get("inchi_column", "fixed_h_inchi"),
         }
+
+    @property
+    def mapping_file(self) -> str | None:
+        return self._data.get("mapping_file")
 
     @property
     def xyz_path_column(self) -> str:
