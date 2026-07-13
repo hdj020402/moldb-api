@@ -3,13 +3,8 @@
 moldb — Molecular structure data storage and querying service.
 
 Usage:
-    moldb [-c config] api lmdb
-    moldb [-c config] api sqlite
-    moldb [-c config] builder lmdb [options]
-    moldb [-c config] builder sqlite [options]
-
-Note: Use non-standard InChI (InChI=1/...) with Fixed-H option to distinguish tautomers.
-Standard InChI (InChI=1S/...) cannot have /f/h layer.
+    moldb [-c config] api --backend lmdb|sqlite
+    moldb [-c config] builder --backend lmdb|sqlite [options]
 """
 import argparse
 import os
@@ -27,15 +22,13 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     api = sub.add_parser("api", help="Run API service")
-    api_sub = api.add_subparsers(dest="backend", required=True)
-    api_sub.add_parser("lmdb", help="LMDB backend")
-    api_sub.add_parser("sqlite", help="SQLite backend")
+    api.add_argument("--backend", choices=["lmdb", "sqlite"], required=True,
+                     help="Storage backend")
 
     build = sub.add_parser("builder", help="Build database from XYZ files",
                            add_help=False)
-    build_sub = build.add_subparsers(dest="backend", required=True)
-    build_sub.add_parser("lmdb", help="LMDB backend", add_help=False)
-    build_sub.add_parser("sqlite", help="SQLite backend", add_help=False)
+    build.add_argument("--backend", choices=["lmdb", "sqlite"], required=True,
+                       help="Storage backend")
 
     args, remaining = parser.parse_known_args()
     os.environ["MOLDB_CONFIG"] = args.config
