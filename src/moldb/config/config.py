@@ -1,27 +1,35 @@
 """
 Configuration module for moldb-api.
 
-Loads settings from config/config.json. Falls back to hardcoded defaults.
+Loads settings from a JSON config file. Falls back to hardcoded defaults.
+The config file path is set by the CLI via ``set_config_path()`` before
+any settings objects are instantiated.
+
 Split into ApiSettings and BuilderSettings so each module only depends
 on the settings it actually needs.
 """
-import os
 import json
+import os
 
 
-def _config_path() -> str:
-    """Resolve config file path from MOLDB_CONFIG env or default."""
-    return os.environ.get("MOLDB_CONFIG", "config/config.json")
+_config_path: str = "config/config.json"
+
+
+def set_config_path(path: str):
+    """Set the config file path (called by CLI before instantiation)."""
+    global _config_path
+    _config_path = os.path.abspath(path) if not os.path.isabs(path) else path
 
 
 class ApiSettings:
     """API service settings (host, port, DB paths)."""
 
     def __init__(self):
-        self._data: dict = self._load_file(_config_path())
+        self._data: dict = self._load_file()
 
     @staticmethod
-    def _load_file(path: str) -> dict:
+    def _load_file() -> dict:
+        path = _config_path
         if not os.path.exists(path):
             return {}
         with open(path) as f:
@@ -59,10 +67,11 @@ class BuilderSettings:
     """Builder settings (column name defaults for CSV mapping files)."""
 
     def __init__(self):
-        self._data: dict = self._load_file(_config_path())
+        self._data: dict = self._load_file()
 
     @staticmethod
-    def _load_file(path: str) -> dict:
+    def _load_file() -> dict:
+        path = _config_path
         if not os.path.exists(path):
             return {}
         with open(path) as f:

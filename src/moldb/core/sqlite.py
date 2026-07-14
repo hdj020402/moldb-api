@@ -293,56 +293,62 @@ class SQLiteMoleculeStore:
         """
         stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
 
-        for inchi, conformers in items:
-            meta_key = self._make_meta_key(inchi)
-            cur = self.conn.execute(
-                "SELECT content FROM molecules WHERE key = ?", (meta_key,)
-            )
-            existing = cur.fetchone()
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            for inchi, conformers in items:
+                meta_key = self._make_meta_key(inchi)
+                cur = self.conn.execute(
+                    "SELECT content FROM molecules WHERE key = ?", (meta_key,)
+                )
+                existing = cur.fetchone()
 
-            if existing is not None:
-                old_meta_data = existing[0]
-                old_meta = json.loads(old_meta_data)
-                old_count = old_meta["count"]
+                if existing is not None:
+                    old_meta_data = existing[0]
+                    old_meta = json.loads(old_meta_data)
+                    old_count = old_meta["count"]
 
-                if on_conflict == "skip":
-                    stats["skipped"] += 1
-                    continue
+                    if on_conflict == "skip":
+                        stats["skipped"] += 1
+                        continue
 
-                if on_conflict == "merge":
-                    for i, conf in enumerate(conformers):
+                    if on_conflict == "merge":
+                        for i, conf in enumerate(conformers):
+                            self.conn.execute(
+                                "INSERT INTO molecules (key, content) VALUES (?, ?)",
+                                (self._make_conf_key(inchi, old_count + i),
+                                 self._serialize_conf(conf))
+                            )
+                        new_count = old_count + len(conformers)
                         self.conn.execute(
-                            "INSERT INTO molecules (key, content) VALUES (?, ?)",
-                            (self._make_conf_key(inchi, old_count + i),
-                             self._serialize_conf(conf))
+                            "UPDATE molecules SET content = ? WHERE key = ?",
+                            (json.dumps({"count": new_count}), meta_key)
                         )
-                    new_count = old_count + len(conformers)
-                    self.conn.execute(
-                        "UPDATE molecules SET content = ? WHERE key = ?",
-                        (json.dumps({"count": new_count}), meta_key)
-                    )
-                    stats["merged"] += 1
-                    continue
+                        stats["merged"] += 1
+                        continue
 
-                if on_conflict == "overwrite":
-                    self._delete_inchi(inchi)
-                    stats["overwritten"] += 1
-            else:
-                stats["written"] += 1
+                    if on_conflict == "overwrite":
+                        self._delete_inchi(inchi)
+                        stats["overwritten"] += 1
+                else:
+                    stats["written"] += 1
 
-            # Write meta and conformers (first-write and overwrite paths)
-            meta = {"count": len(conformers)}
-            self.conn.execute(
-                "INSERT INTO molecules (key, content) VALUES (?, ?)",
-                (meta_key, json.dumps(meta))
-            )
-            for i, conf in enumerate(conformers):
+                # Write meta and conformers (first-write and overwrite paths)
+                meta = {"count": len(conformers)}
                 self.conn.execute(
                     "INSERT INTO molecules (key, content) VALUES (?, ?)",
-                    (self._make_conf_key(inchi, i), self._serialize_conf(conf))
+                    (meta_key, json.dumps(meta))
                 )
+                for i, conf in enumerate(conformers):
+                    self.conn.execute(
+                        "INSERT INTO molecules (key, content) VALUES (?, ?)",
+                        (self._make_conf_key(inchi, i), self._serialize_conf(conf))
+                    )
 
-        self.conn.commit()
+            self.conn.commit()
+        except BaseException:
+            self.conn.rollback()
+            raise
+
         return stats
 
     def _delete_inchi(self, inchi: str):
@@ -362,15 +368,22 @@ class SQLiteMoleculeStore:
         Returns:
             True if successful, False if not found
         """
-        meta_key = self._make_meta_key(inchi)
-        cur = self.conn.execute(
-            "SELECT content FROM molecules WHERE key=?",
-            (meta_key,)
-        )
-        if cur.fetchone() is None:
+        if not self.exists(inchi):
             return False
 
         self._delete_inchi(inchi)
         self.conn.commit()
         return True
+
+    def close(self):
+        """Close the database connection."""
+        if hasattr(self.local, "conn"):
+            self.local.conn.close()
+            del self.local.conn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
 

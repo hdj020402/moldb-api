@@ -156,3 +156,4 @@ DEVELOPMENT_LOG.md
 
 # config
 config/config.json
+.fuse*

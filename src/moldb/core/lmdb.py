@@ -292,12 +292,12 @@ class LMDBMoleculeStore:
         Returns:
             True if successful, False if not found
         """
+        if not self.exists(inchi):
+            return False
+
         with self.env.begin(write=True) as txn:
             meta_key = self._make_meta_key(inchi)
             meta_data = txn.get(meta_key)
-            if meta_data is None:
-                return False
-
             meta = json.loads(meta_data.decode("utf-8"))
             count = meta["count"]
 
@@ -311,3 +311,9 @@ class LMDBMoleculeStore:
     def close(self):
         """Close the database connection."""
         self.env.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()

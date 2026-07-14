@@ -212,6 +212,37 @@ class TestDelete:
         store.close()
 
 
+class TestContextManager:
+    def test_enter_exit(self, tmp_lmdb_path, conf):
+        with LMDBMoleculeStore(tmp_lmdb_path) as store:
+            store.put_conformers("A", [conf])
+            assert store.exists("A")
+        # After exit, store should be closed
+        with LMDBMoleculeStore(tmp_lmdb_path) as store2:
+            assert store2.exists("A")
+
+    def test_exception_does_not_leak_resources(self, tmp_lmdb_path, conf):
+        try:
+            with LMDBMoleculeStore(tmp_lmdb_path) as store:
+                store.put_conformers("A", [conf])
+                raise ValueError("test error")
+        except ValueError:
+            pass
+        # Store should still be closed; reopened store can access data
+        with LMDBMoleculeStore(tmp_lmdb_path) as store2:
+            assert store2.exists("A")
+
+
+class TestDeleteTransaction:
+    def test_delete_nonexistent_no_write_txn(self, tmp_lmdb_path):
+        """Delete of non-existent key should not create an empty write txn."""
+        with LMDBMoleculeStore(tmp_lmdb_path) as store:
+            # Verify delete returns False for non-existent
+            assert not store.delete("nonexistent")
+            # Verify the store is still usable
+            assert store.get_conformers("nonexistent") is None
+
+
 class TestGetManyConformers:
     def test_get_many_mixed(self, tmp_lmdb_path, confs):
         store = LMDBMoleculeStore(tmp_lmdb_path)

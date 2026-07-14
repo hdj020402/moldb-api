@@ -85,6 +85,30 @@ class TestBuildLmdbStream:
             assert key in stats
 
 
+class TestBuilderCommon:
+    """Tests for shared builder utilities in moldb.builder.common."""
+
+    def test_print_progress(self, capsys):
+        from moldb.builder.common import print_progress
+        result = {"written": 5, "overwritten": 2, "skipped": 1, "merged": 3}
+        print_progress(10.5, 100, 9.5, result, 0.5)
+        captured = capsys.readouterr()
+        assert "W:5" in captured.out
+        assert "O:2" in captured.out
+        assert "S:1" in captured.out
+        assert "M:3" in captured.out
+
+    def test_print_progress_no_optional_fields(self, capsys):
+        from moldb.builder.common import print_progress
+        result = {"written": 5, "overwritten": 0}
+        print_progress(10.5, 100, 9.5, result, 0.5)
+        captured = capsys.readouterr()
+        assert "W:5" in captured.out
+        # Skipped/merged not shown when zero
+        assert "S:" not in captured.out
+        assert "M:" not in captured.out
+
+
 class TestBuildSqliteStream:
     def test_write_new_molecules(self, tmp_sqlite_path, confs):
         items = [("A", [confs[0]]), ("B", [confs[1]])]

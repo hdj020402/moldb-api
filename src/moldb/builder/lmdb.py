@@ -10,7 +10,7 @@ Two usage modes:
    >>> stats = build_lmdb_stream(items, "molecules.lmdb", on_conflict="skip")
 
 2. CLI mode (from mapping file) — existing disk-based workflow:
-   $ moldb builder lmdb --mapping mapping.csv --output molecules.lmdb
+   $ moldb builder --backend lmdb --mapping mapping.csv --output molecules.lmdb
 
 CSV format for CLI mode (required):
     xyz_path,fixed_h_inchi
@@ -23,11 +23,12 @@ are stored as conformers of that molecule.
 
 Note: Use non-standard InChI (InChI=1/...) with Fixed-H option.
 """
-import time
 import argparse
-from typing import Iterable, Iterator
+import time
+from typing import Iterable
+
+from .common import print_progress, iter_mapping
 from ..core.lmdb import LMDBMoleculeStore, ConflictMode, ConformerData
-import pandas as pd
 from ..config.config import BuilderSettings
 
 
@@ -48,7 +49,7 @@ def build_lmdb_stream(
     Args:
         items: Iterable of (inchi, conformers_list) pairs.
                Each inchi is a Fixed-H InChI string.
-               Each conformers_list is a list of dicts with \"xyz\" key
+               Each conformers_list is a list of dicts with "xyz" key
                plus any optional metadata.
         output_path: Path to output LMDB database file.
         map_size: Maximum size of the database in bytes (default: 30GB).
@@ -62,8 +63,6 @@ def build_lmdb_stream(
         dict with keys: processed, written, overwritten, skipped, merged,
         conformers, time_seconds
     """
-    store = LMDBMoleculeStore(output_path, map_size=map_size, sync=False, writemap=True)
-
     batch: list[tuple[str, list[ConformerData]]] = []
     stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
     total_conformers = 0
@@ -72,46 +71,47 @@ def build_lmdb_stream(
     def _total_processed() -> int:
         return stats["written"] + stats["overwritten"] + stats["skipped"] + stats["merged"]
 
-    for inchi, conformers in items:
-        if not conformers:
-            continue
+    with LMDBMoleculeStore(output_path, map_size=map_size, sync=False, writemap=True) as store:
+        for inchi, conformers in items:
+            if not conformers:
+                continue
 
-        batch.append((inchi, conformers))
-        total_conformers += len(conformers)
+            batch.append((inchi, conformers))
+            total_conformers += len(conformers)
 
-        if len(batch) >= batch_size:
+            if len(batch) >= batch_size:
+                batch_start = time.time()
+                result = store.put_many_conformers(batch, on_conflict=on_conflict)
+                for key in ("written", "overwritten", "skipped", "merged"):
+                    stats[key] += result[key]
+                batch_time = time.time() - batch_start
+                batch.clear()
+
+                elapsed = time.time() - start_time
+                processed = _total_processed()
+                speed = processed / elapsed if elapsed > 0 else 0
+                print_progress(elapsed, processed, speed, result, batch_time)
+
+        # Final batch
+        if batch:
             batch_start = time.time()
             result = store.put_many_conformers(batch, on_conflict=on_conflict)
             for key in ("written", "overwritten", "skipped", "merged"):
                 stats[key] += result[key]
             batch_time = time.time() - batch_start
-            batch.clear()
-
             elapsed = time.time() - start_time
             processed = _total_processed()
             speed = processed / elapsed if elapsed > 0 else 0
-            _print_progress(elapsed, processed, speed, result, batch_time)
-
-    # Final batch
-    if batch:
-        batch_start = time.time()
-        result = store.put_many_conformers(batch, on_conflict=on_conflict)
-        for key in ("written", "overwritten", "skipped", "merged"):
-            stats[key] += result[key]
-        batch_time = time.time() - batch_start
-        elapsed = time.time() - start_time
-        processed = _total_processed()
-        speed = processed / elapsed if elapsed > 0 else 0
-        _print_progress(elapsed, processed, speed, result, batch_time)
-
-    store.close()
+            print_progress(elapsed, processed, speed, result, batch_time)
 
     total_time = time.time() - start_time
     processed = _total_processed()
     final_speed = processed / total_time if total_time > 0 else 0
-    print(f"\nDone. Processed: {processed} molecules ({stats}), "
-          f"{total_conformers} conformers "
-          f"in {total_time:.2f}s ({final_speed:.1f} mol/s)")
+    print(
+        f"\nDone. Processed: {processed} molecules ({stats}), "
+        f"{total_conformers} conformers "
+        f"in {total_time:.2f}s ({final_speed:.1f} mol/s)"
+    )
 
     return {
         "processed": processed,
@@ -122,63 +122,6 @@ def build_lmdb_stream(
         "conformers": total_conformers,
         "time_seconds": total_time,
     }
-
-
-def _print_progress(elapsed: float, processed: int, speed: float,
-                    batch_result: dict, batch_time: float):
-    """Print a progress line for a completed batch."""
-    parts = [f"W:{batch_result['written']}", f"O:{batch_result['overwritten']}"]
-    if batch_result.get("skipped"):
-        parts.append(f"S:{batch_result['skipped']}")
-    if batch_result.get("merged"):
-        parts.append(f"M:{batch_result['merged']}")
-    detail = ",".join(parts)
-    print(f"[{elapsed:.1f}s] Total {processed} mols, "
-          f"Speed: {speed:.1f} mol/s, "
-          f"Batch [{detail}] in {batch_time:.2f}s")
-
-
-def iter_mapping(
-    mapping_file: str,
-    xyz_path_column: str | None = None,
-    inchi_column: str | None = None,
-) -> Iterator[tuple[str, list[ConformerData]]]:
-    """
-    Generator that yields (inchi, conformers) from a CSV mapping file.
-
-    This bridges the file-based workflow to the stream-based builder.
-    XYZ content read from files is wrapped as {"xyz": content} dicts.
-
-    Args:
-        mapping_file: Path to CSV with xyz_path and inchi columns.
-        xyz_path_column: Name of the column containing XYZ file paths.
-        inchi_column: Name of the column containing Fixed-H InChI.
-
-    Yields:
-        (inchi, [conformer_dict]) tuples
-    """
-    builder = BuilderSettings()
-    if xyz_path_column is None:
-        xyz_path_column = builder.xyz_path_column
-    if inchi_column is None:
-        inchi_column = builder.inchi_column
-
-    df = pd.read_csv(mapping_file)
-
-    if xyz_path_column not in df.columns or inchi_column not in df.columns:
-        raise ValueError(
-            f"CSV must have '{xyz_path_column}' and '{inchi_column}' columns"
-        )
-
-    grouped = df.groupby(inchi_column)[xyz_path_column]
-
-    for inchi, xyz_paths in grouped:
-        conformers: list[ConformerData] = []
-        for xyz_path in xyz_paths:
-            with open(xyz_path, "r") as f:
-                conformers.append({"xyz": f.read()})
-        if conformers:
-            yield (inchi, conformers)
 
 
 def build_lmdb_from_mapping(
@@ -210,7 +153,7 @@ def build_lmdb_from_mapping(
     return build_lmdb_stream(items, output_path, map_size, batch_size, on_conflict)
 
 
-def run_build_lmdb():
+def run_build_lmdb(args: list[str] | None = None):
     """CLI entry point for LMDB database building."""
     builder = BuilderSettings()
 
@@ -220,50 +163,54 @@ def run_build_lmdb():
     parser.add_argument(
         "--mapping",
         default=builder.mapping_file,
-        help="CSV file with xyz_path and fixed_h_inchi columns"
+        help="CSV file with xyz_path and fixed_h_inchi columns",
     )
     parser.add_argument(
         "--output",
         default=builder.lmdb_path,
-        help="Output LMDB database path"
+        help="Output LMDB database path",
     )
     parser.add_argument(
         "--map_size",
         type=int,
         default=builder.lmdb_map_size,
-        help=f"Maximum size of the database in bytes (default: {builder.lmdb_map_size // 1024**3}GB)"
+        help=f"Maximum size of the database in bytes "
+             f"(default: {builder.lmdb_map_size // 1024**3}GB)",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
         default=builder.batch_size,
-        help=f"Number of molecules per write transaction (default: {builder.batch_size})"
+        help=f"Number of molecules per write transaction (default: {builder.batch_size})",
     )
     parser.add_argument(
         "--on_conflict",
         default=builder.on_conflict,
         choices=["overwrite", "skip", "merge"],
-        help=f"Conflict resolution strategy (default: {builder.on_conflict})"
+        help=f"Conflict resolution strategy (default: {builder.on_conflict})",
     )
     parser.add_argument(
         "--xyz_path_column",
         default=None,
-        help=f"Name of the xyz_path column (default: {builder.xyz_path_column})"
+        help=f"Name of the xyz_path column (default: {builder.xyz_path_column})",
     )
     parser.add_argument(
         "--inchi_column",
         default=None,
-        help=f"Name of the fixed_h_inchi column (default: {builder.inchi_column})"
+        help=f"Name of the fixed_h_inchi column (default: {builder.inchi_column})",
     )
 
-    args = parser.parse_args()
-    if not args.mapping:
-        parser.error("--mapping is required (or set builder.mapping.file in config.json)")
+    parsed = parser.parse_args(args)
+    if not parsed.mapping:
+        parser.error(
+            "--mapping is required (or set builder.mapping.file in config.json)"
+        )
     build_lmdb_from_mapping(
-        args.mapping, args.output, args.map_size, args.batch_size,
-        args.on_conflict, args.xyz_path_column, args.inchi_column,
+        parsed.mapping,
+        parsed.output,
+        parsed.map_size,
+        parsed.batch_size,
+        parsed.on_conflict,
+        parsed.xyz_path_column,
+        parsed.inchi_column,
     )
-
-
-if __name__ == "__main__":
-    run_build_lmdb()

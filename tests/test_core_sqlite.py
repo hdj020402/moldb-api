@@ -133,6 +133,64 @@ class TestDelete:
         assert count == 0
 
 
+class TestContextManager:
+    def test_enter_exit(self, tmp_sqlite_path, conf):
+        with SQLiteMoleculeStore(tmp_sqlite_path) as store:
+            store.init_db()
+            store.put_conformers("A", [conf])
+            assert store.exists("A")
+        # After exit, store should be closable and data persisted
+        s2 = SQLiteMoleculeStore(tmp_sqlite_path)
+        s2.init_db()
+        assert s2.exists("A")
+        s2.close()
+
+    def test_exception_does_not_leak_resources(self, tmp_sqlite_path, conf):
+        try:
+            with SQLiteMoleculeStore(tmp_sqlite_path) as store:
+                store.init_db()
+                store.put_conformers("A", [conf])
+                raise ValueError("test error")
+        except ValueError:
+            pass
+        s2 = SQLiteMoleculeStore(tmp_sqlite_path)
+        s2.init_db()
+        assert s2.exists("A")
+        s2.close()
+
+
+class TestClose:
+    def test_close_releases_connection(self, tmp_sqlite_path):
+        store = SQLiteMoleculeStore(tmp_sqlite_path)
+        store.init_db()
+        store.close()
+        # Should be able to reopen a fresh connection
+        s2 = SQLiteMoleculeStore(tmp_sqlite_path)
+        s2.init_db()
+        s2.close()
+
+    def test_close_before_init_no_error(self, tmp_sqlite_path):
+        store = SQLiteMoleculeStore(tmp_sqlite_path)
+        # close() before init_db() should not raise
+        store.close()
+
+    def test_double_close_no_error(self, tmp_sqlite_path):
+        store = SQLiteMoleculeStore(tmp_sqlite_path)
+        store.init_db()
+        store.close()
+        store.close()  # second close should be safe
+
+
+class TestDeleteTransaction:
+    def test_delete_nonexistent_no_side_effects(self, store, conf):
+        """Delete of non-existent key should return False without side effects."""
+        store.put_conformers("A", [conf])
+        assert not store.delete("nonexistent")
+        # Existing data should be unaffected
+        assert store.exists("A")
+        assert store.get_conformers("A") is not None
+
+
 class TestGetManyConformers:
     def test_get_many_mixed(self, store, confs):
         store.put_conformers("A", [confs[0]])
