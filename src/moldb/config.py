@@ -1,5 +1,5 @@
 """
-Configuration module for moldb-api.
+Configuration module for moldb.
 
 Loads settings from a JSON config file. Falls back to hardcoded defaults.
 Split into ApiSettings and BuilderSettings so each module only depends

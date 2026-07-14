@@ -1,5 +1,5 @@
 """
-Logging configuration for moldb-api.
+Logging configuration for moldb.
 
 Provides separate log setup for API, builder, and store components.
 Each can be directed to its own log file or share the same file.

@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
-    {name = "moldb-api developers"}
+    {name = "moldb developers"}
 ]
 keywords = ["chemistry", "molecule", "xyz", "lmdb"]
 classifiers = [

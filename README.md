@@ -1,4 +1,4 @@
-# moldb-api
+# moldb
 
 High-performance molecular structure data storage and query service with conformer support.
 
@@ -34,8 +34,8 @@ Note: Your database should use non-standard InChI (`InChI=1/...`) generated with
 
 ```bash
 # Create and activate a virtual environment
-conda create -n moldb-api python=3.12
-conda activate moldb-api
+conda create -n moldb python=3.12
+conda activate moldb
 
 # Install the package
 pip install -e .
@@ -215,7 +215,7 @@ Response:
 ## Project Structure
 
 ```text
-moldb-api/
+moldb/
 ├── pyproject.toml          # Package configuration
 ├── config/                 # Configuration
 │   ├── config.example.json # Example config (copy to config.json)
