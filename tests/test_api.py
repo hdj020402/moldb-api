@@ -85,19 +85,27 @@ class TestApiEndpoints:
         assert "version" in data
         assert "database" in data
 
-    def test_get_molecule_found(self, client, xyz_single):
-        response = client.get("/molecule/InChI=1/H2O/h1H2")
+    def test_post_molecule_found(self, client, xyz_single):
+        response = client.post(
+            "/molecule",
+            json={"inchi": "InChI=1/H2O/h1H2"},
+        )
         assert response.status_code == 200
         data = response.json()
-        assert data["inchi"] == "InChI=1/H2O/h1H2"
-        assert data["count"] == 1
-        assert len(data["conformers"]) == 1
-        assert data["conformers"][0]["xyz"] == xyz_single
+        result = data["InChI=1/H2O/h1H2"]
+        assert result["inchi"] == "InChI=1/H2O/h1H2"
+        assert result["count"] == 1
+        assert len(result["conformers"]) == 1
+        assert result["conformers"][0]["xyz"] == xyz_single
 
-    def test_get_molecule_not_found(self, client):
-        response = client.get("/molecule/InChI=1/NOPE")
-        assert response.status_code == 404
-        assert response.json() == {"detail": "Molecule not found"}
+    def test_post_molecule_not_found(self, client):
+        response = client.post(
+            "/molecule",
+            json={"inchi": "InChI=1/NOPE"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["InChI=1/NOPE"] is None
 
     def test_batch_query(self, client):
         response = client.post(
@@ -118,8 +126,3 @@ class TestApiEndpoints:
         )
         assert response.status_code == 422
 
-    def test_get_molecule_url_encoded(self, client):
-        response = client.get(
-            "/molecule/InChI%3D1%2FH2O%2Fh1H2"
-        )
-        assert response.status_code == 200

@@ -309,3 +309,23 @@ class TestInvalidOnConflict:
         with pytest.raises(ValueError, match="invalid on_conflict"):
             store.put_many_conformers([("A", [conf])], on_conflict="replace")
         store.close()
+
+
+class TestXyzValidation:
+    def test_put_conformers_missing_xyz_raises(self, tmp_db_path):
+        store = MoleculeStore(tmp_db_path)
+        with pytest.raises(ValueError, match="xyz"):
+            store.put_conformers("A", [{"energy": -76.4}])
+        store.close()
+
+    def test_put_conformers_empty_raises(self, tmp_db_path):
+        store = MoleculeStore(tmp_db_path)
+        with pytest.raises(ValueError, match="must not be empty"):
+            store.put_conformers("A", [])
+        store.close()
+
+    def test_put_many_conformers_missing_xyz_raises(self, tmp_db_path, conf):
+        store = MoleculeStore(tmp_db_path)
+        with pytest.raises(ValueError, match="xyz"):
+            store.put_many_conformers([("A", [conf]), ("B", [{"energy": -76.4}])])
+        store.close()

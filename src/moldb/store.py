@@ -174,6 +174,8 @@ class MoleculeStore:
         """
         if not conformers:
             raise ValueError("conformers must not be empty")
+        if any("xyz" not in c for c in conformers):
+            raise ValueError("every conformer must have an 'xyz' key")
 
         with self.env.begin(write=True) as txn:
             meta_key = self._make_meta_key(inchi)
@@ -250,6 +252,10 @@ class MoleculeStore:
             for inchi, conformers in items:
                 if not conformers:
                     raise ValueError("conformers must not be empty")
+                if any("xyz" not in c for c in conformers):
+                    raise ValueError("every conformer must have an 'xyz' key")
+
+                item_count += 1
 
                 meta_key = self._make_meta_key(inchi)
                 existing = txn.get(meta_key)
@@ -288,8 +294,6 @@ class MoleculeStore:
                 txn.put(meta_key, json.dumps(meta).encode("utf-8"))
                 for i, conf in enumerate(conformers):
                     txn.put(self._make_conf_key(inchi, i), self._serialize_conf(conf))
-
-                item_count += 1
 
         logger.debug("put_many_conformers: %d molecules, stats=%s", item_count, stats)
         return stats

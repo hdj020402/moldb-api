@@ -5,11 +5,10 @@ Note: Use non-standard InChI (InChI=1/...) with Fixed-H option to distinguish ta
 Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
 import logging
-import urllib.parse
 from contextlib import asynccontextmanager
 from typing import Callable
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 
 from .store import MoleculeStore
@@ -20,6 +19,11 @@ from . import __version__
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
+
+
+class MoleculeRequest(BaseModel):
+    """Request model for single-molecule query."""
+    inchi: str
 
 
 class MoleculeResponse(BaseModel):
@@ -79,20 +83,16 @@ def create_app(
             "database": db_path,
         }
 
-    @app.get("/molecule/{inchi:path}", response_model=MoleculeResponse)
-    async def get_molecule_by_inchi(request: Request, inchi: str):
+    @app.post("/molecule")
+    async def get_molecule(request: Request, body: MoleculeRequest):
         """Retrieve all conformers for a molecule by Fixed-H InChI."""
-        decoded_inchi = urllib.parse.unquote(inchi)
-        data = request.app.state.store.get_conformers(decoded_inchi)
-        if data is None:
-            raise HTTPException(status_code=404, detail="Molecule not found")
-        return data
+        data = request.app.state.store.get_conformers(body.inchi)
+        return {body.inchi: data}
 
     @app.post("/molecules/batch")
     async def get_molecules_batch(request: Request, body: BatchMoleculeRequest):
         """Retrieve multiple molecules' conformers in a single request."""
-        decoded_inchis = [urllib.parse.unquote(inchi) for inchi in body.inchis]
-        results = request.app.state.store.get_many_conformers(decoded_inchis)
+        results = request.app.state.store.get_many_conformers(body.inchis)
         return {inchi: data for inchi, data in results}
 
     return app

@@ -79,9 +79,8 @@ def _log_progress(logger, elapsed, processed, speed, batch_result, batch_time):
 
 def iter_mapping(
     mapping_file: str,
-    xyz_path_column: str | None = None,
-    inchi_column: str | None = None,
-    config_path: str = "config/config.json",
+    xyz_path_column: str = "xyz_path",
+    inchi_column: str = "fixed_h_inchi",
 ):
     """Yield (inchi, conformers) from a CSV mapping file.
 
@@ -89,19 +88,12 @@ def iter_mapping(
 
     Args:
         mapping_file: Path to CSV with xyz_path and inchi columns.
-        xyz_path_column: Column name for XYZ file paths (default from config).
-        inchi_column: Column name for Fixed-H InChI (default from config).
-        config_path: Path to config file.
+        xyz_path_column: Column name for XYZ file paths.
+        inchi_column: Column name for Fixed-H InChI.
 
     Yields:
         (inchi, [conformer_dict]) tuples
     """
-    cfg = BuilderSettings(config_path=config_path)
-    if xyz_path_column is None:
-        xyz_path_column = cfg.xyz_path_column
-    if inchi_column is None:
-        inchi_column = cfg.inchi_column
-
     df = pd.read_csv(mapping_file)
 
     if xyz_path_column not in df.columns or inchi_column not in df.columns:
@@ -208,8 +200,8 @@ def build_from_mapping(
     map_size: int = 30 * 1024 ** 3,
     batch_size: int = 1000,
     on_conflict: ConflictMode = "overwrite",
-    xyz_path_column: str | None = None,
-    inchi_column: str | None = None,
+    xyz_path_column: str = "xyz_path",
+    inchi_column: str = "fixed_h_inchi",
 ) -> dict:
     """Build LMDB database from a CSV mapping file (convenience wrapper)."""
     items = iter_mapping(mapping_file, xyz_path_column, inchi_column)
