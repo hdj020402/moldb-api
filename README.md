@@ -217,13 +217,15 @@ Response:
 ```text
 moldb/
 ├── pyproject.toml          # Package configuration
+├── README.md
+├── .gitignore
 ├── config/                 # Configuration
-│   ├── config.example.json # Example config (copy to config.json)
-│   └── config.json         # Local config (gitignored)
+│   └── config.example.json # Example config (copy to config.json)
 ├── docs/                   # Documentation
 │   ├── API_DOCUMENTATION.md
 │   └── DESIGN.md           # Design philosophy (single-key vs multi-key)
 ├── tests/                  # Unit tests
+│   ├── __init__.py
 │   ├── conftest.py
 │   ├── test_store.py
 │   ├── test_builder.py
@@ -231,15 +233,14 @@ moldb/
 │   ├── test_config.py
 │   ├── test_cli.py
 │   └── test_logging.py
-├── src/moldb/
-│   ├── __init__.py
-│   ├── cli.py              # CLI entry point
-│   ├── store.py            # LMDB storage implementation
-│   ├── server.py           # FastAPI application and endpoints
-│   ├── build.py            # Stream and mapping-file builders
-│   ├── config.py           # Configuration management
-│   └── logging.py          # Logging setup helpers
-└── .vscode/                # IDE settings (gitignored)
+└── src/moldb/
+    ├── __init__.py
+    ├── cli.py              # CLI entry point
+    ├── store.py            # LMDB storage implementation
+    ├── server.py           # FastAPI application and endpoints
+    ├── build.py            # Stream and mapping-file builders
+    ├── config.py           # Configuration management
+    └── logging.py          # Logging setup helpers
 ```
 
 ## Performance Considerations
