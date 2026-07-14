@@ -2,46 +2,46 @@
 
 import pytest
 
-from moldb.store import LMDBMoleculeStore
+from moldb.store import MoleculeStore
 
 
 class TestInit:
-    def test_create_new_store(self, tmp_lmdb_path):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_create_new_store(self, tmp_db_path):
+        store = MoleculeStore(tmp_db_path)
         assert store.env is not None
         store.close()
 
-    def test_create_with_custom_map_size(self, tmp_lmdb_path):
-        store = LMDBMoleculeStore(tmp_lmdb_path, map_size=1024 ** 3)
+    def test_create_with_custom_map_size(self, tmp_db_path):
+        store = MoleculeStore(tmp_db_path, map_size=1024 ** 3)
         assert store.map_size == 1024 ** 3
         store.close()
 
-    def test_reopen_existing_store(self, tmp_lmdb_path, conf):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_reopen_existing_store(self, tmp_db_path, conf):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("InChI=1/A", [conf])
         store.close()
 
-        store2 = LMDBMoleculeStore(tmp_lmdb_path)
+        store2 = MoleculeStore(tmp_db_path)
         assert store2.exists("InChI=1/A")
         store2.close()
 
 
 class TestExists:
-    def test_exists_true(self, tmp_lmdb_path, conf):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_exists_true(self, tmp_db_path, conf):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [conf])
         assert store.exists("A")
         store.close()
 
-    def test_exists_false(self, tmp_lmdb_path):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_exists_false(self, tmp_db_path):
+        store = MoleculeStore(tmp_db_path)
         assert not store.exists("nonexistent")
         store.close()
 
 
 class TestPutGetConformers:
-    def test_write_and_read(self, tmp_lmdb_path, conf, xyz_single):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_write_and_read(self, tmp_db_path, conf, xyz_single):
+        store = MoleculeStore(tmp_db_path)
         result = store.put_conformers("InChI=1/A", [conf])
         assert result["action"] == "written"
         assert result["count"] == 1
@@ -52,8 +52,8 @@ class TestPutGetConformers:
         assert data["conformers"][0]["xyz"] == xyz_single
         store.close()
 
-    def test_write_and_read_with_metadata(self, tmp_lmdb_path, conf_with_meta):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_write_and_read_with_metadata(self, tmp_db_path, conf_with_meta):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [conf_with_meta])
 
         data = store.get_conformers("A")
@@ -63,13 +63,13 @@ class TestPutGetConformers:
         assert c["source"] == conf_with_meta["source"]
         store.close()
 
-    def test_read_nonexistent(self, tmp_lmdb_path):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_read_nonexistent(self, tmp_db_path):
+        store = MoleculeStore(tmp_db_path)
         assert store.get_conformers("nope") is None
         store.close()
 
-    def test_write_multiple_conformers(self, tmp_lmdb_path, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_write_multiple_conformers(self, tmp_db_path, confs):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", confs)
         data = store.get_conformers("A")
         assert data["count"] == len(confs)
@@ -78,8 +78,8 @@ class TestPutGetConformers:
 
 
 class TestPutManyConformers:
-    def test_write_many(self, tmp_lmdb_path, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_write_many(self, tmp_db_path, confs):
+        store = MoleculeStore(tmp_db_path)
         items = [("A", [confs[0]]), ("B", [confs[1]]), ("C", [confs[2]])]
         stats = store.put_many_conformers(items)
         assert stats["written"] == 3
@@ -90,8 +90,8 @@ class TestPutManyConformers:
 
 
 class TestOnConflict:
-    def test_overwrite_replaces(self, tmp_lmdb_path, conf, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_overwrite_replaces(self, tmp_db_path, conf, confs):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [conf])
         result = store.put_conformers("A", [confs[1]], on_conflict="overwrite")
         assert result["action"] == "overwritten"
@@ -101,9 +101,9 @@ class TestOnConflict:
         assert data["conformers"][0]["xyz"] == confs[1]["xyz"]
         store.close()
 
-    def test_overwrite_cleans_up_stale_conformers(self, tmp_lmdb_path, confs):
+    def test_overwrite_cleans_up_stale_conformers(self, tmp_db_path, confs):
         """When overwriting with fewer conformers, old conf keys are deleted."""
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", confs)  # 3 conformers
         store.put_conformers("A", [confs[0]], on_conflict="overwrite")  # 1
 
@@ -116,8 +116,8 @@ class TestOnConflict:
             assert len(conf_keys) == 1
         store.close()
 
-    def test_skip_when_exists(self, tmp_lmdb_path, conf, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_skip_when_exists(self, tmp_db_path, conf, confs):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [conf])
 
         result = store.put_conformers("A", [confs[0]], on_conflict="skip")
@@ -128,14 +128,14 @@ class TestOnConflict:
         assert data["conformers"][0]["xyz"] == conf["xyz"]  # unchanged
         store.close()
 
-    def test_skip_when_not_exists(self, tmp_lmdb_path, conf):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_skip_when_not_exists(self, tmp_db_path, conf):
+        store = MoleculeStore(tmp_db_path)
         result = store.put_conformers("A", [conf], on_conflict="skip")
         assert result["action"] == "written"
         store.close()
 
-    def test_merge_appends(self, tmp_lmdb_path, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_merge_appends(self, tmp_db_path, confs):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [confs[0]], on_conflict="merge")
         result = store.put_conformers("A", [confs[1]], on_conflict="merge")
         assert result["action"] == "merged"
@@ -147,9 +147,9 @@ class TestOnConflict:
         assert data["conformers"][1]["xyz"] == confs[1]["xyz"]
         store.close()
 
-    def test_merge_does_not_touch_existing_keys(self, tmp_lmdb_path, confs):
+    def test_merge_does_not_touch_existing_keys(self, tmp_db_path, confs):
         """Merge only writes new keys, never rewrites old ones."""
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [confs[0], confs[1]])
 
         with store.env.begin() as txn:
@@ -162,8 +162,8 @@ class TestOnConflict:
             assert txn.get(b"A::conf_000002") is not None
         store.close()
 
-    def test_put_many_with_skip(self, tmp_lmdb_path, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_put_many_with_skip(self, tmp_db_path, confs):
+        store = MoleculeStore(tmp_db_path)
         store.put_many_conformers([("A", [confs[0]])])
 
         items = [("A", [confs[1]]), ("B", [confs[2]])]
@@ -172,8 +172,8 @@ class TestOnConflict:
         assert stats["written"] == 1
         store.close()
 
-    def test_put_many_with_merge(self, tmp_lmdb_path, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_put_many_with_merge(self, tmp_db_path, confs):
+        store = MoleculeStore(tmp_db_path)
         store.put_many_conformers([("A", [confs[0]])])
 
         items = [("A", [confs[1]]), ("B", [confs[2]])]
@@ -187,21 +187,21 @@ class TestOnConflict:
 
 
 class TestDelete:
-    def test_delete_existing(self, tmp_lmdb_path, conf):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_delete_existing(self, tmp_db_path, conf):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [conf])
         assert store.delete("A")
         assert not store.exists("A")
         assert store.get_conformers("A") is None
         store.close()
 
-    def test_delete_nonexistent(self, tmp_lmdb_path):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_delete_nonexistent(self, tmp_db_path):
+        store = MoleculeStore(tmp_db_path)
         assert not store.delete("nope")
         store.close()
 
-    def test_delete_removes_all_conformer_keys(self, tmp_lmdb_path, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_delete_removes_all_conformer_keys(self, tmp_db_path, confs):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", confs)
         store.delete("A")
 
@@ -213,30 +213,30 @@ class TestDelete:
 
 
 class TestContextManager:
-    def test_enter_exit(self, tmp_lmdb_path, conf):
-        with LMDBMoleculeStore(tmp_lmdb_path) as store:
+    def test_enter_exit(self, tmp_db_path, conf):
+        with MoleculeStore(tmp_db_path) as store:
             store.put_conformers("A", [conf])
             assert store.exists("A")
         # After exit, store should be closed
-        with LMDBMoleculeStore(tmp_lmdb_path) as store2:
+        with MoleculeStore(tmp_db_path) as store2:
             assert store2.exists("A")
 
-    def test_exception_does_not_leak_resources(self, tmp_lmdb_path, conf):
+    def test_exception_does_not_leak_resources(self, tmp_db_path, conf):
         try:
-            with LMDBMoleculeStore(tmp_lmdb_path) as store:
+            with MoleculeStore(tmp_db_path) as store:
                 store.put_conformers("A", [conf])
                 raise ValueError("test error")
         except ValueError:
             pass
         # Store should still be closed; reopened store can access data
-        with LMDBMoleculeStore(tmp_lmdb_path) as store2:
+        with MoleculeStore(tmp_db_path) as store2:
             assert store2.exists("A")
 
 
 class TestDeleteTransaction:
-    def test_delete_nonexistent_no_write_txn(self, tmp_lmdb_path):
+    def test_delete_nonexistent_no_write_txn(self, tmp_db_path):
         """Delete of non-existent key should not create an empty write txn."""
-        with LMDBMoleculeStore(tmp_lmdb_path) as store:
+        with MoleculeStore(tmp_db_path) as store:
             # Verify delete returns False for non-existent
             assert not store.delete("nonexistent")
             # Verify the store is still usable
@@ -244,8 +244,8 @@ class TestDeleteTransaction:
 
 
 class TestGetManyConformers:
-    def test_get_many_mixed(self, tmp_lmdb_path, confs):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_get_many_mixed(self, tmp_db_path, confs):
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [confs[0]])
         store.put_conformers("B", [confs[1]])
 
@@ -256,16 +256,16 @@ class TestGetManyConformers:
         assert results[2][1] is None
         store.close()
 
-    def test_get_many_empty_list(self, tmp_lmdb_path):
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+    def test_get_many_empty_list(self, tmp_db_path):
+        store = MoleculeStore(tmp_db_path)
         assert store.get_many_conformers([]) == []
         store.close()
 
 
 class TestGetConformersEdgeCases:
-    def test_missing_conformer_key_skipped(self, tmp_lmdb_path, conf):
+    def test_missing_conformer_key_skipped(self, tmp_db_path, conf):
         """If a conformer slot is missing, it's skipped (not None)."""
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [conf, conf])
 
         # Manually delete one conformer key to simulate corruption
@@ -279,9 +279,9 @@ class TestGetConformersEdgeCases:
         assert data["conformers"][0] is not None
         store.close()
 
-    def test_get_many_with_missing_conformer(self, tmp_lmdb_path, conf):
+    def test_get_many_with_missing_conformer(self, tmp_db_path, conf):
         """Batch retrieval skips missing conformer slots."""
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("A", [conf, conf])
         with store.env.begin(write=True) as txn:
             txn.delete(b"A::conf_000000")

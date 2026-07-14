@@ -3,79 +3,79 @@
 import pytest
 
 from moldb.build import build_stream
-from moldb.store import LMDBMoleculeStore
+from moldb.store import MoleculeStore
 
 
 class TestBuildStream:
-    def test_write_new_molecules(self, tmp_lmdb_path, confs):
+    def test_write_new_molecules(self, tmp_db_path, confs):
         items = [
             ("InChI=1/A", [confs[0]]),
             ("InChI=1/B", [confs[1]]),
         ]
-        stats = build_stream(items, tmp_lmdb_path)
+        stats = build_stream(items, tmp_db_path)
         assert stats["written"] == 2
         assert stats["processed"] == 2
 
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         assert store.exists("InChI=1/A")
         assert store.exists("InChI=1/B")
         store.close()
 
-    def test_write_with_metadata(self, tmp_lmdb_path, conf_with_meta):
+    def test_write_with_metadata(self, tmp_db_path, conf_with_meta):
         items = [("A", [conf_with_meta])]
-        stats = build_stream(items, tmp_lmdb_path)
+        stats = build_stream(items, tmp_db_path)
         assert stats["written"] == 1
 
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         data = store.get_conformers("A")
         assert data["conformers"][0]["energy"] == conf_with_meta["energy"]
         store.close()
 
-    def test_skip_existing(self, tmp_lmdb_path, confs):
-        build_stream([("A", [confs[0]])], tmp_lmdb_path)
+    def test_skip_existing(self, tmp_db_path, confs):
+        build_stream([("A", [confs[0]])], tmp_db_path)
         stats = build_stream(
             [("A", [confs[1]])],
-            tmp_lmdb_path,
+            tmp_db_path,
             on_conflict="skip",
         )
         assert stats["skipped"] == 1
         assert stats["written"] == 0
 
-    def test_merge_streaming(self, tmp_lmdb_path, confs):
+    def test_merge_streaming(self, tmp_db_path, confs):
         """Simulate streaming: each conformer arrives separately."""
         for c in confs:
             build_stream(
                 [("A", [c])],
-                tmp_lmdb_path,
+                tmp_db_path,
                 on_conflict="merge",
             )
 
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         data = store.get_conformers("A")
         assert data["count"] == len(confs)
         store.close()
 
-    def test_overwrite_default(self, tmp_lmdb_path, confs):
-        build_stream([("A", [confs[0], confs[1]])], tmp_lmdb_path)
-        build_stream([("A", [confs[2]])], tmp_lmdb_path)
+    def test_overwrite_default(self, tmp_db_path, confs):
+        build_stream([("A", [confs[0], confs[1]])], tmp_db_path)
+        build_stream([("A", [confs[2]])], tmp_db_path)
 
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         data = store.get_conformers("A")
         assert data["count"] == 1
         store.close()
 
-    def test_large_batch(self, tmp_lmdb_path, conf):
+    def test_large_batch(self, tmp_db_path, conf):
         """Write more molecules than batch_size to force multiple batches."""
         n = 20
         items = [(f"mol_{i}", [conf]) for i in range(n)]
-        stats = build_stream(items, tmp_lmdb_path, batch_size=5)
+        stats = build_stream(items, tmp_db_path, batch_size=5)
         assert stats["written"] == n
 
-    def test_returns_enriched_stats(self, tmp_lmdb_path, conf):
-        build_stream([("A", [conf])], tmp_lmdb_path)
+    def test_returns_enriched_stats(self, tmp_db_path, conf):
+        build_stream([("A", [conf])], tmp_db_path)
         stats = build_stream(
             [("A", [conf]), ("B", [conf])],
-            tmp_lmdb_path,
+            tmp_db_path,
             on_conflict="skip",
         )
         for key in ("processed", "written", "skipped", "overwritten",
@@ -110,11 +110,11 @@ class TestBuilderCommon:
 class TestFlushBatch:
     """Tests for the flush_batch shared helper."""
 
-    def test_flush_batch_updates_stats(self, tmp_lmdb_path, confs):
+    def test_flush_batch_updates_stats(self, tmp_db_path, confs):
         from moldb.build import _flush_batch
-        from moldb.store import LMDBMoleculeStore
+        from moldb.store import MoleculeStore
 
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
         batch = [("A", [confs[0]]), ("B", [confs[1]])]
         result, batch_time = _flush_batch(store, batch, "overwrite", stats)
@@ -123,11 +123,11 @@ class TestFlushBatch:
         assert batch_time >= 0
         store.close()
 
-    def test_flush_batch_merge(self, tmp_lmdb_path, confs):
+    def test_flush_batch_merge(self, tmp_db_path, confs):
         from moldb.build import _flush_batch
-        from moldb.store import LMDBMoleculeStore
+        from moldb.store import MoleculeStore
 
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
         _flush_batch(store, [("A", [confs[0]])], "overwrite", stats)
         _flush_batch(store, [("A", [confs[1]])], "merge", stats)

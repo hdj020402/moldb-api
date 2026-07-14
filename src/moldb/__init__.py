@@ -4,6 +4,6 @@ import importlib.metadata
 
 __version__ = importlib.metadata.version("moldb")
 
-from moldb.store import LMDBMoleculeStore
+from moldb.store import MoleculeStore
 
-__all__ = ["LMDBMoleculeStore", "__version__"]
+__all__ = ["MoleculeStore", "__version__"]

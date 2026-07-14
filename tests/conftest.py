@@ -45,7 +45,7 @@ def conf_with_meta(xyz_single):
 
 
 @pytest.fixture
-def tmp_lmdb_path():
+def tmp_db_path():
     """Temporary LMDB database path (cleaned up after test)."""
     with tempfile.TemporaryDirectory() as d:
         yield os.path.join(d, "test.lmdb")

@@ -81,9 +81,9 @@ build_stream(my_pipeline("./raw_xyzs/"), "molecules.lmdb")
 ### Method 2: Direct store API
 
 ```python
-from moldb.store import LMDBMoleculeStore
+from moldb.store import MoleculeStore
 
-store = LMDBMoleculeStore("molecules.lmdb")
+store = MoleculeStore("molecules.lmdb")
 
 # Store conformers (each is a dict with "xyz" key)
 conformers = [

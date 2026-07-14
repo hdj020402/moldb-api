@@ -38,7 +38,7 @@ class TestMoleculeResponse:
 
 class TestCreateApp:
     def test_creates_fastapi_app(self):
-        from moldb.store import LMDBMoleculeStore
+        from moldb.store import MoleculeStore
         from moldb import __version__
         import tempfile, os
 
@@ -47,7 +47,7 @@ class TestCreateApp:
             app = create_app(
                 title="test-app",
                 version=__version__,
-                store_factory=lambda: LMDBMoleculeStore(db_path),
+                store_factory=lambda: MoleculeStore(db_path),
             )
             assert app.title == "test-app"
             assert app.version == __version__
@@ -58,21 +58,21 @@ class TestApiEndpoints:
     """Integration tests using FastAPI TestClient."""
 
     @pytest.fixture
-    def client(self, tmp_lmdb_path, conf):
+    def client(self, tmp_db_path, conf):
         pytest.importorskip("httpx", reason="httpx required for TestClient")
         from fastapi.testclient import TestClient
         from moldb.server import create_app
-        from moldb.store import LMDBMoleculeStore
+        from moldb.store import MoleculeStore
         from moldb import __version__
 
-        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store = MoleculeStore(tmp_db_path)
         store.put_conformers("InChI=1/H2O/h1H2", [conf])
         store.close()
 
         app = create_app(
             title="test-api",
             version=__version__,
-            store_factory=lambda: LMDBMoleculeStore(tmp_lmdb_path),
+            store_factory=lambda: MoleculeStore(tmp_db_path),
         )
         with TestClient(app) as c:
             yield c

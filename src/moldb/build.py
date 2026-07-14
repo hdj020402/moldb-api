@@ -4,7 +4,7 @@ Build LMDB database from XYZ file iterables or mapping files.
 Two usage modes:
 
 1. Stream mode (programmatic) — feed an iterable directly from a pipeline:
-   >>> from moldb.builder import build_stream
+   >>> from moldb.build import build_stream
    >>> items = [("InChI=1/...", [{"xyz": "xyz_content_1"}, {"xyz": "xyz_content_2"}]), ...]
    >>> stats = build_stream(items, "molecules.lmdb")
    >>> stats = build_stream(items, "molecules.lmdb", on_conflict="skip")
@@ -29,7 +29,7 @@ from typing import Iterable
 import lmdb
 import pandas as pd
 
-from .store import LMDBMoleculeStore, ConflictMode, ConformerData
+from .store import MoleculeStore, ConflictMode, ConformerData
 from .config import BuilderSettings
 
 # ---------------------------------------------------------------------------
@@ -121,6 +121,7 @@ def build_stream(
     map_size: int = 30 * 1024 ** 3,
     batch_size: int = 1000,
     on_conflict: ConflictMode = "overwrite",
+    verbose: bool = True,
 ) -> dict:
     """Build LMDB database from an iterable of (inchi, conformers) pairs.
 
@@ -130,6 +131,7 @@ def build_stream(
         map_size: Maximum database size in bytes (default: 30GB).
         batch_size: Number of molecules per write transaction.
         on_conflict: "overwrite" | "skip" | "merge".
+        verbose: If True (default), print progress to stdout.
 
     Returns:
         dict with keys: processed, written, overwritten, skipped, merged,
@@ -141,7 +143,7 @@ def build_stream(
     start_time = time.time()
 
     try:
-        with LMDBMoleculeStore(output_path, map_size=map_size,
+        with MoleculeStore(output_path, map_size=map_size,
                                sync=False, writemap=True) as store:
             for inchi, conformers in items:
                 if not conformers:
@@ -154,20 +156,22 @@ def build_stream(
                     result, bt = _flush_batch(store, batch, on_conflict, stats)
                     batch.clear()
 
-                    elapsed = time.time() - start_time
-                    tp = _total_processed(stats)
-                    _print_progress(elapsed, tp,
-                                    tp / elapsed if elapsed > 0 else 0,
-                                    result, bt)
+                    if verbose:
+                        elapsed = time.time() - start_time
+                        tp = _total_processed(stats)
+                        _print_progress(elapsed, tp,
+                                        tp / elapsed if elapsed > 0 else 0,
+                                        result, bt)
 
             # Final batch
             if batch:
                 result, bt = _flush_batch(store, batch, on_conflict, stats)
                 elapsed = time.time() - start_time
                 tp = _total_processed(stats)
-                _print_progress(elapsed, tp,
-                                tp / elapsed if elapsed > 0 else 0,
-                                result, bt)
+                if verbose:
+                    _print_progress(elapsed, tp,
+                                    tp / elapsed if elapsed > 0 else 0,
+                                    result, bt)
 
     except lmdb.MapFullError:
         raise lmdb.MapFullError(
@@ -176,14 +180,18 @@ def build_stream(
             f"Use --map-size flag or set builder.lmdb.map_size_gb in config."
         )
 
-    total_time = time.time() - start_time
-    processed = _total_processed(stats)
-    speed = processed / total_time if total_time > 0 else 0
-    print(
-        f"\nDone. Processed: {processed} molecules ({stats}), "
-        f"{total_conformers} conformers "
-        f"in {total_time:.2f}s ({speed:.1f} mol/s)"
-    )
+    if verbose:
+        total_time = time.time() - start_time
+        processed = _total_processed(stats)
+        speed = processed / total_time if total_time > 0 else 0
+        print(
+            f"\nDone. Processed: {processed} molecules ({stats}), "
+            f"{total_conformers} conformers "
+            f"in {total_time:.2f}s ({speed:.1f} mol/s)"
+        )
+    else:
+        total_time = time.time() - start_time
+        processed = _total_processed(stats)
 
     return {
         "processed": processed,
@@ -223,18 +231,29 @@ def run_build(
     """CLI entry point. All None values fall back to config defaults."""
     cfg = BuilderSettings(config_path=config_path)
 
-    mapping = mapping or cfg.mapping_file
-    output = output or cfg.lmdb_path
-    map_size = map_size or cfg.lmdb_map_size
-    batch_size = batch_size or cfg.batch_size
-    on_conflict = on_conflict or cfg.on_conflict
-    xyz_path_column = xyz_path_column or cfg.xyz_path_column
-    inchi_column = inchi_column or cfg.inchi_column
+    if mapping is None:
+        mapping = cfg.mapping_file
+    if output is None:
+        output = cfg.lmdb_path
+    if map_size is None:
+        map_size = cfg.lmdb_map_size
+    if batch_size is None:
+        batch_size = cfg.batch_size
+    if on_conflict is None:
+        on_conflict = cfg.on_conflict
+    if xyz_path_column is None:
+        xyz_path_column = cfg.xyz_path_column
+    if inchi_column is None:
+        inchi_column = cfg.inchi_column
 
     if not mapping:
         raise ValueError(
             "--mapping is required (or set builder.mapping.file in config.json)"
         )
+    if map_size < 1:
+        raise ValueError(f"map-size must be positive, got {map_size}")
+    if batch_size < 1:
+        raise ValueError(f"batch-size must be >= 1, got {batch_size}")
 
     build_from_mapping(
         mapping, output, map_size, batch_size, on_conflict,

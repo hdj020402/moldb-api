@@ -11,7 +11,7 @@ from typing import Callable
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .store import LMDBMoleculeStore
+from .store import MoleculeStore
 from .config import ApiSettings
 from . import __version__
 
@@ -116,11 +116,13 @@ def run_api(
         port = s.lmdb_port
     if map_size is None:
         map_size = s.lmdb_map_size
+    if map_size < 1:
+        raise ValueError(f"map-size must be positive, got {map_size}")
 
     app = create_app(
         title="moldb-api",
         version=__version__,
-        store_factory=lambda: LMDBMoleculeStore(s.lmdb_path, map_size=map_size),
+        store_factory=lambda: MoleculeStore(s.lmdb_path, map_size=map_size),
     )
 
     uvicorn.run(app, host=host, port=port)

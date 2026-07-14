@@ -1,5 +1,5 @@
 """
-LMDB backend implementation for molecular structure data storage.
+Molecular structure data storage backed by LMDB.
 
 Storage scheme:
     Key: {inchi}::meta    → {"count": N}
@@ -25,8 +25,8 @@ META_SUFFIX = "::meta"
 CONF_PREFIX = "::conf_"
 
 
-class LMDBMoleculeStore:
-    """LMDB-based storage for molecular structure data with conformer support."""
+class MoleculeStore:
+    """Storage for molecular structure data with conformer support."""
 
     def __init__(
         self,
