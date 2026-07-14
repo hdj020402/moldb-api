@@ -56,6 +56,12 @@ def main():
                         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                         help="Log level (overrides config)")
 
+    # --- info subcommand ---
+    info = sub.add_parser("info", help="Show database statistics")
+    info.add_argument("db_path", help="Path to LMDB database")
+    info.add_argument("--map-size", type=int, default=None,
+                      help="LMDB map size in bytes")
+
     args = parser.parse_args()
 
     if args.command == "api":
@@ -67,6 +73,13 @@ def main():
             config_path=args.config,
             log_file=args.log_file,
             log_level=args.log_level,
+        )
+
+    elif args.command == "info":
+        from moldb.build import run_info
+        run_info(
+            db_path=args.db_path,
+            map_size=args.map_size,
         )
 
     elif args.command == "builder":

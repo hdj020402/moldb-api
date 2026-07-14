@@ -83,6 +83,7 @@ class TestApiEndpoints:
         data = response.json()
         assert "message" in data
         assert "version" in data
+        assert "database" in data
 
     def test_get_molecule_found(self, client, xyz_single):
         response = client.get("/molecule/InChI=1/H2O/h1H2")

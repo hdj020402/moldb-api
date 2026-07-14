@@ -213,7 +213,6 @@ Response:
 ```text
 moldb-api/
 ├── pyproject.toml          # Package configuration
-├── main.py                 # Development launcher
 ├── config/                 # Configuration
 │   ├── config.example.json # Example config (copy to config.json)
 │   └── config.json         # Local config (gitignored)
@@ -226,14 +225,17 @@ moldb-api/
 │   ├── test_builder.py
 │   ├── test_api.py
 │   ├── test_config.py
-│   └── test_cli.py
-└── src/moldb/
-    ├── __init__.py
-    ├── cli.py              # CLI entry point
-    ├── store.py            # LMDB storage implementation
-    ├── server.py           # FastAPI application and endpoints
-    ├── build.py            # Stream and mapping-file builders
-    └── config.py           # Configuration management
+│   ├── test_cli.py
+│   └── test_logging.py
+├── src/moldb/
+│   ├── __init__.py
+│   ├── cli.py              # CLI entry point
+│   ├── store.py            # LMDB storage implementation
+│   ├── server.py           # FastAPI application and endpoints
+│   ├── build.py            # Stream and mapping-file builders
+│   ├── config.py           # Configuration management
+│   └── logging.py          # Logging setup helpers
+└── .vscode/                # IDE settings (gitignored)
 ```
 
 ## Performance Considerations

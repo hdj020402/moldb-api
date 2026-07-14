@@ -100,6 +100,11 @@ def build_uvicorn_log_config(
     Returns:
         A dict suitable for ``uvicorn.run(..., log_config=...)``.
     """
+    if level.upper() not in _VALID_LEVELS:
+        raise ValueError(
+            f"log_level must be one of {sorted(_VALID_LEVELS)}, got {level!r}"
+        )
+
     handlers = {
         "default": {
             "formatter": "default",

@@ -42,6 +42,25 @@ class TestCLIErrors:
         assert result.returncode != 0
 
 
+class TestCLIInfo:
+    def test_info_help(self):
+        result = _run_moldb("info --help")
+        assert result.returncode == 0
+
+    def test_info_missing_path(self):
+        result = _run_moldb("info /nonexistent/path.lmdb")
+        assert result.returncode != 0
+
+    def test_info_real_db(self, tmp_db_path, conf):
+        from moldb.store import MoleculeStore
+        with MoleculeStore(tmp_db_path) as store:
+            store.put_conformers("InChI=1/A", [conf])
+        result = _run_moldb(f"info {tmp_db_path}")
+        assert result.returncode == 0
+        assert "Molecules:" in result.stdout
+        assert "Conformers:" in result.stdout
+
+
 class TestCLIVersion:
     def test_version_via_module(self):
         """Ensure importlib.metadata version works."""

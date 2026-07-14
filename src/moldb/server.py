@@ -43,6 +43,7 @@ def create_app(
     title: str,
     version: str,
     store_factory: Callable[[], object],
+    db_path: str = "",
 ) -> FastAPI:
     """Create a fully-configured FastAPI application.
 
@@ -52,6 +53,7 @@ def create_app(
         store_factory: Zero-argument callable that returns a store instance.
             The store must implement ``get_conformers``, ``get_many_conformers``,
             and ``close``.
+        db_path: Path to the LMDB database (shown in health check).
 
     Returns:
         A FastAPI application instance with routes and lifespan.
@@ -71,7 +73,11 @@ def create_app(
     @app.get("/")
     async def root():
         """Health check."""
-        return {"message": f"{title} is running", "version": version}
+        return {
+            "message": f"{title} is running",
+            "version": version,
+            "database": db_path,
+        }
 
     @app.get("/molecule/{inchi:path}", response_model=MoleculeResponse)
     async def get_molecule_by_inchi(request: Request, inchi: str):
@@ -145,6 +151,7 @@ def run_api(
         title="moldb-api",
         version=__version__,
         store_factory=lambda: MoleculeStore(s.lmdb_path, map_size=map_size),
+        db_path=s.lmdb_path,
     )
 
     logger.info("Starting moldb-api on %s:%s (db=%s, map_size=%d)",

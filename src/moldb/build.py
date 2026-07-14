@@ -30,13 +30,14 @@ from typing import Iterable
 import lmdb
 import pandas as pd
 
-from .store import MoleculeStore, ConflictMode, ConformerData
+from .store import MoleculeStore, ConflictMode, ConformerData, get_db_info
 from .config import BuilderSettings
 from .logging import setup_logging, BUILDER_LOGGER
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _flush_batch(store, batch, on_conflict, stats):
     """Write a batch to the store and update stats in place.
@@ -56,7 +57,7 @@ def _total_processed(stats):
     return stats["written"] + stats["overwritten"] + stats["skipped"] + stats["merged"]
 
 
-def _print_progress(logger, elapsed, processed, speed, batch_result, batch_time):
+def _log_progress(logger, elapsed, processed, speed, batch_result, batch_time):
     """Log a progress line for a completed batch."""
     parts = [f"W:{batch_result.get('written', 0)}",
              f"O:{batch_result.get('overwritten', 0)}"]
@@ -74,6 +75,7 @@ def _print_progress(logger, elapsed, processed, speed, batch_result, batch_time)
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def iter_mapping(
     mapping_file: str,
@@ -122,9 +124,11 @@ def build_stream(
     map_size: int = 30 * 1024 ** 3,
     batch_size: int = 1000,
     on_conflict: ConflictMode = "overwrite",
-    verbose: bool = True,
 ) -> dict:
     """Build LMDB database from an iterable of (inchi, conformers) pairs.
+
+    Progress is logged at INFO level. Use ``--log-level WARNING`` to
+    suppress progress output.
 
     Args:
         items: Iterable of (inchi, conformers_list) pairs.
@@ -132,7 +136,6 @@ def build_stream(
         map_size: Maximum database size in bytes (default: 30GB).
         batch_size: Number of molecules per write transaction.
         on_conflict: "overwrite" | "skip" | "merge".
-        verbose: If True (default), print progress to stdout.
 
     Returns:
         dict with keys: processed, written, overwritten, skipped, merged,
@@ -158,22 +161,20 @@ def build_stream(
                     result, bt = _flush_batch(store, batch, on_conflict, stats)
                     batch.clear()
 
-                    if verbose:
-                        elapsed = time.time() - start_time
-                        tp = _total_processed(stats)
-                        _print_progress(logger, elapsed, tp,
-                                        tp / elapsed if elapsed > 0 else 0,
-                                        result, bt)
+                    elapsed = time.time() - start_time
+                    tp = _total_processed(stats)
+                    _log_progress(logger, elapsed, tp,
+                                  tp / elapsed if elapsed > 0 else 0,
+                                  result, bt)
 
             # Final batch
             if batch:
                 result, bt = _flush_batch(store, batch, on_conflict, stats)
-                if verbose:
-                    elapsed = time.time() - start_time
-                    tp = _total_processed(stats)
-                    _print_progress(logger, elapsed, tp,
-                                    tp / elapsed if elapsed > 0 else 0,
-                                    result, bt)
+                elapsed = time.time() - start_time
+                tp = _total_processed(stats)
+                _log_progress(logger, elapsed, tp,
+                              tp / elapsed if elapsed > 0 else 0,
+                              result, bt)
 
     except lmdb.MapFullError:
         raise lmdb.MapFullError(
@@ -184,12 +185,11 @@ def build_stream(
 
     total_time = time.time() - start_time
     processed = _total_processed(stats)
-    if verbose:
-        speed = processed / total_time if total_time > 0 else 0
-        logger.info(
-            "Done. Processed: %d molecules (%s), %d conformers in %.2fs (%.1f mol/s)",
-            processed, stats, total_conformers, total_time, speed,
-        )
+    speed = processed / total_time if total_time > 0 else 0
+    logger.info(
+        "Done. Processed: %d molecules (%s), %d conformers in %.2fs (%.1f mol/s)",
+        processed, stats, total_conformers, total_time, speed,
+    )
 
     return {
         "processed": processed,
@@ -271,3 +271,29 @@ def run_build(
         mapping, output, map_size, batch_size, on_conflict,
         xyz_path_column, inchi_column,
     )
+
+
+def run_info(db_path: str, map_size: int | None = None):
+    """CLI entry point for ``moldb info`` — print database statistics."""
+    if map_size is None:
+        map_size = 30 * 1024 ** 3
+    if map_size < 1:
+        raise ValueError(f"map-size must be positive, got {map_size}")
+
+    info = get_db_info(db_path, map_size=map_size)
+
+    # Human-readable file size
+    size_bytes = info["file_size"]
+    if size_bytes >= 1024 ** 3:
+        size_str = f"{size_bytes / 1024 ** 3:.1f} GB"
+    elif size_bytes >= 1024 ** 2:
+        size_str = f"{size_bytes / 1024 ** 2:.1f} MB"
+    elif size_bytes >= 1024:
+        size_str = f"{size_bytes / 1024:.1f} KB"
+    else:
+        size_str = f"{size_bytes} B"
+
+    print(f"Database:    {db_path}")
+    print(f"Molecules:   {info['molecules']:,}")
+    print(f"Conformers:  {info['conformers']:,}")
+    print(f"File size:   {size_str}")

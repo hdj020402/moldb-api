@@ -292,3 +292,20 @@ class TestGetConformersEdgeCases:
         assert data is not None
         assert len(data["conformers"]) == 1
         store.close()
+
+
+class TestInvalidOnConflict:
+    def test_put_conformers_invalid_mode_raises(self, tmp_db_path, conf):
+        store = MoleculeStore(tmp_db_path)
+        # Write first so the molecule exists — on_conflict only matters on conflict
+        store.put_conformers("A", [conf])
+        with pytest.raises(ValueError, match="invalid on_conflict"):
+            store.put_conformers("A", [conf], on_conflict="append")
+        store.close()
+
+    def test_put_many_invalid_mode_raises(self, tmp_db_path, conf):
+        store = MoleculeStore(tmp_db_path)
+        store.put_conformers("A", [conf])
+        with pytest.raises(ValueError, match="invalid on_conflict"):
+            store.put_many_conformers([("A", [conf])], on_conflict="replace")
+        store.close()

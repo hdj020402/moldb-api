@@ -73,6 +73,27 @@ class TestApiSettings:
             ApiSettings(config_path=str(cfg))
 
 
+class TestUnknownKeyWarning:
+    def test_unknown_top_level_key_warns(self, tmp_path, caplog):
+        import logging
+        cfg = tmp_path / "cfg.json"
+        cfg.write_text(json.dumps({"badkey": 1}))
+        from moldb.config import ApiSettings
+        with caplog.at_level(logging.WARNING, logger="moldb.config"):
+            ApiSettings(config_path=str(cfg))
+        assert "badkey" in caplog.text
+        assert "<root>" in caplog.text
+
+    def test_known_keys_no_warning(self, tmp_path, caplog):
+        import logging
+        cfg = tmp_path / "cfg.json"
+        cfg.write_text(json.dumps({"storage": {"path": "db.lmdb"}}))
+        from moldb.config import ApiSettings
+        with caplog.at_level(logging.WARNING, logger="moldb.config"):
+            ApiSettings(config_path=str(cfg))
+        assert caplog.text == ""
+
+
 class TestBuilderSettings:
     def test_default_path(self):
         from moldb.config import BuilderSettings

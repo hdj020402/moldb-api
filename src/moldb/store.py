@@ -181,9 +181,10 @@ class MoleculeStore:
                 old_count = old_meta["count"]
 
                 if on_conflict == "skip":
+                    logger.debug("put_conformers: %s skipped (%d existing conformers)",
+                                inchi, old_count)
                     return {"action": "skipped", "count": old_count}
-
-                if on_conflict == "merge":
+                elif on_conflict == "merge":
                     # Append-only: write new conformers starting at old_count,
                     # leaving existing conformer keys untouched.
                     for i, conf in enumerate(conformers):
@@ -191,13 +192,18 @@ class MoleculeStore:
                                 self._serialize_conf(conf))
                     new_count = old_count + len(conformers)
                     txn.put(meta_key, json.dumps({"count": new_count}).encode("utf-8"))
+                    logger.debug("put_conformers: %s merged %d → %d conformers",
+                                inchi, len(conformers), new_count)
                     return {"action": "merged", "count": new_count}
-
-                if on_conflict == "overwrite":
+                elif on_conflict == "overwrite":
                     # Clean up stale conformer keys (if new count is smaller)
                     if old_count > len(conformers):
                         for i in range(len(conformers), old_count):
                             txn.delete(self._make_conf_key(inchi, i))
+                else:
+                    raise ValueError(
+                        f"invalid on_conflict: {on_conflict!r}"
+                    )
 
             new_count = len(conformers)
             meta = {"count": new_count}
@@ -211,6 +217,8 @@ class MoleculeStore:
             else:
                 action = "overwritten"
 
+            logger.debug("put_conformers: %s %s (%d conformers)",
+                        inchi, action, new_count)
             return {"action": action, "count": new_count}
 
     def put_many_conformers(
@@ -250,8 +258,7 @@ class MoleculeStore:
                     if on_conflict == "skip":
                         stats["skipped"] += 1
                         continue
-
-                    if on_conflict == "merge":
+                    elif on_conflict == "merge":
                         # Append-only: write new conformers after existing ones
                         for i, conf in enumerate(conformers):
                             txn.put(self._make_conf_key(inchi, old_count + i),
@@ -260,13 +267,16 @@ class MoleculeStore:
                         txn.put(meta_key, json.dumps({"count": new_count}).encode("utf-8"))
                         stats["merged"] += 1
                         continue
-
-                    if on_conflict == "overwrite":
+                    elif on_conflict == "overwrite":
                         # Clean up stale conformer keys (if new count is smaller)
                         if old_count > len(conformers):
                             for i in range(len(conformers), old_count):
                                 txn.delete(self._make_conf_key(inchi, i))
                         stats["overwritten"] += 1
+                    else:
+                        raise ValueError(
+                            f"invalid on_conflict: {on_conflict!r}"
+                        )
                 else:
                     stats["written"] += 1
 
@@ -295,6 +305,7 @@ class MoleculeStore:
             meta_key = self._make_meta_key(inchi)
             meta_data = txn.get(meta_key)
             if meta_data is None:
+                logger.debug("delete: %s not found", inchi)
                 return False
 
             meta = json.loads(meta_data.decode("utf-8"))
@@ -305,6 +316,7 @@ class MoleculeStore:
 
             txn.delete(meta_key)
 
+        logger.debug("delete: %s removed (%d conformers)", inchi, count)
         return True
 
     def close(self):
@@ -317,3 +329,46 @@ class MoleculeStore:
 
     def __exit__(self, *args):
         self.close()
+
+
+# ---------------------------------------------------------------------------
+# Utility
+# ---------------------------------------------------------------------------
+
+
+def get_db_info(db_path: str, map_size: int = 30 * 1024 ** 3) -> dict:
+    """Open *db_path* read-only and return molecule / conformer counts.
+
+    Returns a dict with keys ``molecules``, ``conformers``, and ``file_size``.
+    """
+    import os
+
+    env = lmdb.open(
+        db_path,
+        map_size=map_size,
+        subdir=False,
+        readonly=True,
+        lock=False,
+        meminit=False,
+    )
+    try:
+        molecules = 0
+        conformers = 0
+        with env.begin() as txn:
+            cursor = txn.cursor()
+            for key, value in cursor:
+                key_str = key.decode("utf-8", errors="replace")
+                if key_str.endswith(META_SUFFIX):
+                    molecules += 1
+                    meta = json.loads(value.decode("utf-8"))
+                    conformers += meta.get("count", 0)
+    finally:
+        env.close()
+
+    file_size = os.path.getsize(db_path)
+
+    return {
+        "molecules": molecules,
+        "conformers": conformers,
+        "file_size": file_size,
+    }

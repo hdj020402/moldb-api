@@ -87,6 +87,12 @@ class TestBuildUvicornLogConfig:
         assert cfg["loggers"]["uvicorn"]["level"] == "DEBUG"
 
 
+class TestBuildUvicornLogConfigErrors:
+    def test_invalid_level_raises(self):
+        with pytest.raises(ValueError, match="log_level"):
+            build_uvicorn_log_config(level="TRACE")
+
+
 class TestLoggerConstants:
     def test_api_logger_name(self):
         assert API_LOGGER == "moldb.api"
