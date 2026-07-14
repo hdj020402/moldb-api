@@ -21,19 +21,22 @@ class ApiSettings:
 
     def _load_file(self) -> dict:
         if not os.path.exists(self.config_path):
-            raw = {}
+            full_raw = {}
         else:
             with open(self.config_path) as f:
-                raw = json.load(f).get("api", {})
+                full_raw = json.load(f)
 
-        port = int(raw.get("lmdb", {}).get("port", 8000))
+        raw = full_raw.get("api", {})
+        storage = full_raw.get("storage", {})
+
+        port = int(raw.get("port", 8000))
         if not 1 <= port <= 65535:
-            raise ValueError(f"lmdb_port must be 1-65535, got {port}")
+            raise ValueError(f"port must be 1-65535, got {port}")
 
-        map_size_gb = raw.get("lmdb", {}).get("map_size_gb", 30)
+        map_size_gb = storage.get("map_size_gb", 30)
         map_size = map_size_gb * 1024 ** 3
         if map_size < 1024 ** 2:
-            raise ValueError(f"lmdb_map_size must be at least 1MB, got {map_size}")
+            raise ValueError(f"map_size must be at least 1MB, got {map_size}")
 
         logging_cfg = raw.get("logging", {})
         log_level = logging_cfg.get("level", "INFO").upper()
@@ -45,8 +48,8 @@ class ApiSettings:
 
         return {
             "host": raw.get("host", "0.0.0.0"),
-            "lmdb_path": raw.get("lmdb", {}).get("path", "molecules.lmdb"),
-            "lmdb_port": port,
+            "lmdb_path": storage.get("path", "molecules.lmdb"),
+            "port": port,
             "lmdb_map_size": map_size,
             "log_level": log_level,
             "log_file": log_file,
@@ -61,8 +64,8 @@ class ApiSettings:
         return self._data["lmdb_path"]
 
     @property
-    def lmdb_port(self) -> int:
-        return self._data["lmdb_port"]
+    def port(self) -> int:
+        return self._data["port"]
 
     @property
     def lmdb_map_size(self) -> int:
@@ -86,10 +89,13 @@ class BuilderSettings:
 
     def _load_file(self) -> dict:
         if not os.path.exists(self.config_path):
-            raw = {}
+            full_raw = {}
         else:
             with open(self.config_path) as f:
-                raw = json.load(f).get("builder", {})
+                full_raw = json.load(f)
+
+        raw = full_raw.get("builder", {})
+        storage = full_raw.get("storage", {})
 
         batch_size = int(raw.get("batch_size", 1000))
         if batch_size < 1:
@@ -101,10 +107,10 @@ class BuilderSettings:
                 f"on_conflict must be one of {_VALID_ON_CONFLICT}, got {on_conflict!r}"
             )
 
-        map_size_gb = raw.get("lmdb", {}).get("map_size_gb", 30)
+        map_size_gb = storage.get("map_size_gb", 30)
         map_size = map_size_gb * 1024 ** 3
         if map_size < 1024 ** 2:
-            raise ValueError(f"lmdb_map_size must be at least 1MB, got {map_size}")
+            raise ValueError(f"map_size must be at least 1MB, got {map_size}")
 
         mapping = raw.get("mapping", {})
 
@@ -117,7 +123,7 @@ class BuilderSettings:
         log_file = logging_cfg.get("file", None)
 
         return {
-            "lmdb_path": raw.get("lmdb", {}).get("path", "molecules.lmdb"),
+            "lmdb_path": storage.get("path", "molecules.lmdb"),
             "lmdb_map_size": map_size,
             "batch_size": batch_size,
             "on_conflict": on_conflict,

@@ -9,21 +9,22 @@ class TestApiSettings:
         from moldb.config import ApiSettings
         settings = ApiSettings()
         assert settings.host == "0.0.0.0"
-        assert settings.lmdb_port == 8000
+        assert settings.port == 8000
         assert settings.lmdb_map_size == 30 * 1024 ** 3
 
     def test_custom_path(self, tmp_path):
         cfg = tmp_path / "cfg.json"
         cfg.write_text(json.dumps({
+            "storage": {"map_size_gb": 10},
             "api": {
                 "host": "127.0.0.1",
-                "lmdb": {"port": 9000, "map_size_gb": 10},
+                "port": 9000,
             }
         }))
         from moldb.config import ApiSettings
         settings = ApiSettings(config_path=str(cfg))
         assert settings.host == "127.0.0.1"
-        assert settings.lmdb_port == 9000
+        assert settings.port == 9000
         assert settings.lmdb_map_size == 10 * 1024 ** 3
 
     def test_missing_file_uses_defaults(self):
@@ -34,16 +35,16 @@ class TestApiSettings:
 
     def test_invalid_port_raises(self, tmp_path):
         cfg = tmp_path / "cfg.json"
-        cfg.write_text(json.dumps({"api": {"lmdb": {"port": 99999}}}))
+        cfg.write_text(json.dumps({"api": {"port": 99999}}))
         from moldb.config import ApiSettings
-        with pytest.raises(ValueError, match="lmdb_port"):
+        with pytest.raises(ValueError, match="port must be 1-65535"):
             ApiSettings(config_path=str(cfg))
 
     def test_invalid_map_size_raises(self, tmp_path):
         cfg = tmp_path / "cfg.json"
-        cfg.write_text(json.dumps({"api": {"lmdb": {"map_size_gb": 0}}}))
+        cfg.write_text(json.dumps({"storage": {"map_size_gb": 0}}))
         from moldb.config import ApiSettings
-        with pytest.raises(ValueError, match="lmdb_map_size"):
+        with pytest.raises(ValueError, match="map_size"):
             ApiSettings(config_path=str(cfg))
 
     def test_logging_defaults(self):

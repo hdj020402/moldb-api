@@ -122,7 +122,7 @@ def run_api(
     if host is None:
         host = s.host
     if port is None:
-        port = s.lmdb_port
+        port = s.port
     if map_size is None:
         map_size = s.lmdb_map_size
     if map_size < 1:
