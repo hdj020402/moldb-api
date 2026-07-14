@@ -15,8 +15,11 @@ Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
 import json
 import logging
+import os
 import lmdb
 from typing import Iterable, Literal, Any
+
+from .logging import STORE_LOGGER
 
 ConflictMode = Literal["overwrite", "skip", "merge"]
 ConformerData = dict[str, Any]  # always has "xyz" key
@@ -25,7 +28,7 @@ ConformerData = dict[str, Any]  # always has "xyz" key
 META_SUFFIX = "::meta"
 CONF_PREFIX = "::conf_"
 
-logger = logging.getLogger("moldb.store")
+logger = logging.getLogger(STORE_LOGGER)
 
 
 class MoleculeStore:
@@ -341,8 +344,6 @@ def get_db_info(db_path: str, map_size: int = 30 * 1024 ** 3) -> dict:
 
     Returns a dict with keys ``molecules``, ``conformers``, and ``file_size``.
     """
-    import os
-
     env = lmdb.open(
         db_path,
         map_size=map_size,

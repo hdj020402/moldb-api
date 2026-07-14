@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from .store import MoleculeStore
 from .config import ApiSettings
-from .logging import setup_logging, build_uvicorn_log_config, API_LOGGER
+from .logging import setup_logging, build_uvicorn_log_config, API_LOGGER, STORE_LOGGER
 from . import __version__
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        logger = logging.getLogger("moldb.api")
+        logger = logging.getLogger(API_LOGGER)
         logger.debug("Opening store for API")
         app.state.store = store_factory()
         yield
@@ -140,6 +140,7 @@ def run_api(
 
     # Configure application logging
     setup_logging(API_LOGGER, level=log_level, log_file=log_file)
+    setup_logging(STORE_LOGGER, level=log_level, log_file=log_file)
     logger = logging.getLogger(API_LOGGER)
 
     # Build uvicorn log config that mirrors app log format

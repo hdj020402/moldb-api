@@ -6,21 +6,10 @@ Split into ApiSettings and BuilderSettings so each module only depends
 on the settings it actually needs.
 """
 import json
-import logging
 import os
 
 _VALID_ON_CONFLICT = {"overwrite", "skip", "merge"}
 _VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
-
-# Known keys for unknown-key validation
-_KNOWN_TOP_KEYS = {"storage", "api", "builder"}
-_KNOWN_STORAGE_KEYS = {"path", "map_size_gb"}
-_KNOWN_API_KEYS = {"host", "port", "logging"}
-_KNOWN_BUILDER_KEYS = {"batch_size", "on_conflict", "mapping", "logging"}
-_KNOWN_LOGGING_KEYS = {"level", "file"}
-_KNOWN_MAPPING_KEYS = {"file", "xyz_path_column", "inchi_column"}
-
-_logger = logging.getLogger("moldb.config")
 
 
 # ---------------------------------------------------------------------------
@@ -65,35 +54,6 @@ def _parse_logging(section_raw: dict) -> dict:
     return {"log_level": log_level, "log_file": log_file}
 
 
-def _warn_unknown_keys(known: set, actual: dict, path: str):
-    """Emit a warning for each key in *actual* that is not in *known*."""
-    for key in actual:
-        if key not in known:
-            _logger.warning("Unknown config key %r at %s", key, path)
-
-
-def _validate_known_keys(full_raw: dict):
-    """Warn about unrecognized keys in the config file."""
-    if not full_raw:
-        return
-
-    _warn_unknown_keys(_KNOWN_TOP_KEYS, full_raw, "<root>")
-
-    if "storage" in full_raw:
-        _warn_unknown_keys(_KNOWN_STORAGE_KEYS, full_raw["storage"], "storage")
-
-    for section, known in [("api", _KNOWN_API_KEYS), ("builder", _KNOWN_BUILDER_KEYS)]:
-        if section in full_raw:
-            sec = full_raw[section]
-            _warn_unknown_keys(known, sec, section)
-            if "logging" in sec:
-                _warn_unknown_keys(_KNOWN_LOGGING_KEYS, sec["logging"],
-                                   f"{section}.logging")
-            if section == "builder" and "mapping" in sec:
-                _warn_unknown_keys(_KNOWN_MAPPING_KEYS, sec["mapping"],
-                                   "builder.mapping")
-
-
 # ---------------------------------------------------------------------------
 # Settings classes
 # ---------------------------------------------------------------------------
@@ -108,7 +68,6 @@ class ApiSettings:
 
     def _load_file(self) -> dict:
         full_raw = _load_json_config(self.config_path)
-        _validate_known_keys(full_raw)
 
         raw = full_raw.get("api", {})
         storage_cfg = _parse_storage(full_raw)
@@ -159,7 +118,6 @@ class BuilderSettings:
 
     def _load_file(self) -> dict:
         full_raw = _load_json_config(self.config_path)
-        _validate_known_keys(full_raw)
 
         raw = full_raw.get("builder", {})
         storage_cfg = _parse_storage(full_raw)

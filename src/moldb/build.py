@@ -32,7 +32,7 @@ import pandas as pd
 
 from .store import MoleculeStore, ConflictMode, ConformerData, get_db_info
 from .config import BuilderSettings
-from .logging import setup_logging, BUILDER_LOGGER
+from .logging import setup_logging, BUILDER_LOGGER, STORE_LOGGER
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -141,7 +141,7 @@ def build_stream(
         dict with keys: processed, written, overwritten, skipped, merged,
         conformers, time_seconds
     """
-    logger = logging.getLogger("moldb.builder")
+    logger = logging.getLogger(BUILDER_LOGGER)
     batch = []
     stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
     total_conformers = 0
@@ -260,6 +260,7 @@ def run_build(
     if log_level is None:
         log_level = cfg.log_level
     setup_logging(BUILDER_LOGGER, level=log_level, log_file=log_file)
+    setup_logging(STORE_LOGGER, level=log_level, log_file=log_file)
     logger = logging.getLogger(BUILDER_LOGGER)
     logger.info("Building database from %s -> %s", mapping, output)
     logger.debug(
