@@ -104,8 +104,15 @@ def iter_mapping(
     for inchi, paths in df.groupby(inchi_column)[xyz_path_column]:
         conformers = []
         for p in paths:
-            with open(p, "r") as f:
-                conformers.append({"xyz": f.read()})
+            try:
+                with open(p, "r") as f:
+                    conformers.append({"xyz": f.read()})
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    f"XYZ file not found: {p}\n"
+                    f"  Referenced by InChI: {inchi}\n"
+                    f"  Mapping file: {mapping_file}"
+                )
         if conformers:
             yield inchi, conformers
 

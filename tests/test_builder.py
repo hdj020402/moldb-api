@@ -220,3 +220,115 @@ class TestIterMapping:
                 xyz_path_column="xyz_path",
                 inchi_column="fixed_h_inchi",
             ))
+
+    def test_missing_xyz_file_raises_with_context(self, tmp_path):
+        import csv
+        from moldb.build import iter_mapping
+
+        mapping_file = tmp_path / "mapping.csv"
+        with open(mapping_file, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["xyz_path", "fixed_h_inchi"])
+            writer.writerow(["/nonexistent/path/mol.xyz", "InChI=1/A"])
+
+        with pytest.raises(FileNotFoundError, match="XYZ file not found"):
+            list(iter_mapping(
+                str(mapping_file),
+                xyz_path_column="xyz_path",
+                inchi_column="fixed_h_inchi",
+            ))
+
+
+class TestBuildFromMapping:
+    """End-to-end tests: CSV mapping file → build_from_mapping → verify DB."""
+
+    def test_full_pipeline(self, tmp_path):
+        import csv
+        from moldb.build import build_from_mapping
+        from moldb.store import MoleculeStore
+
+        # Create XYZ files
+        xyz_a = tmp_path / "mol_a.xyz"
+        xyz_b1 = tmp_path / "mol_b_conf1.xyz"
+        xyz_b2 = tmp_path / "mol_b_conf2.xyz"
+        xyz_a.write_text("1\n\nC  0.0 0.0 0.0\n")
+        xyz_b1.write_text("1\n\nN  0.0 0.0 0.0\n")
+        xyz_b2.write_text("1\n\nN  0.0 0.0 1.0\n")
+
+        # Create CSV mapping
+        mapping_file = tmp_path / "mapping.csv"
+        with open(mapping_file, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["xyz_path", "fixed_h_inchi"])
+            writer.writerow([str(xyz_a), "InChI=1/A"])
+            writer.writerow([str(xyz_b1), "InChI=1/B"])
+            writer.writerow([str(xyz_b2), "InChI=1/B"])
+
+        db_path = str(tmp_path / "test.lmdb")
+        stats = build_from_mapping(
+            str(mapping_file), db_path,
+            xyz_path_column="xyz_path",
+            inchi_column="fixed_h_inchi",
+        )
+
+        assert stats["written"] == 2
+        assert stats["conformers"] == 3
+
+        # Verify DB contents
+        store = MoleculeStore(db_path)
+        data_a = store.get_conformers("InChI=1/A")
+        assert data_a["count"] == 1
+        assert "C" in data_a["conformers"][0]["xyz"]
+
+        data_b = store.get_conformers("InChI=1/B")
+        assert data_b["count"] == 2
+        assert len(data_b["conformers"]) == 2
+        store.close()
+
+    def test_full_pipeline_with_conflict_skip(self, tmp_path):
+        import csv
+        from moldb.build import build_from_mapping
+        from moldb.store import MoleculeStore
+
+        xyz1 = tmp_path / "mol1.xyz"
+        xyz1.write_text("1\n\nC  0.0 0.0 0.0\n")
+
+        mapping1 = tmp_path / "mapping1.csv"
+        with open(mapping1, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["path_col", "inchi_col"])
+            writer.writerow([str(xyz1), "InChI=1/A"])
+
+        db_path = str(tmp_path / "test.lmdb")
+
+        # First build writes A
+        stats1 = build_from_mapping(
+            str(mapping1), db_path,
+            xyz_path_column="path_col",
+            inchi_column="inchi_col",
+        )
+        assert stats1["written"] == 1
+
+        # Second build with skip should skip A
+        xyz2 = tmp_path / "mol2.xyz"
+        xyz2.write_text("1\n\nO  0.0 0.0 0.0\n")
+        mapping2 = tmp_path / "mapping2.csv"
+        with open(mapping2, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["path_col", "inchi_col"])
+            writer.writerow([str(xyz2), "InChI=1/A"])  # same InChI, different file
+            writer.writerow([str(xyz2), "InChI=1/B"])  # new InChI
+
+        stats2 = build_from_mapping(
+            str(mapping2), db_path,
+            on_conflict="skip",
+            xyz_path_column="path_col",
+            inchi_column="inchi_col",
+        )
+        assert stats2["skipped"] == 1
+        assert stats2["written"] == 1
+
+        store = MoleculeStore(db_path)
+        assert store.exists("InChI=1/A")
+        assert store.exists("InChI=1/B")
+        store.close()

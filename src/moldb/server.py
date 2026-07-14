@@ -66,10 +66,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger = logging.getLogger(API_LOGGER)
-        logger.debug("Opening store for API")
+        logger.info("Opening store at %s", db_path)
         app.state.store = store_factory()
         yield
-        logger.debug("Closing store for API")
+        logger.info("Closing store at %s", db_path)
         app.state.store.close()
 
     app = FastAPI(title=title, version=version, lifespan=lifespan)
@@ -82,6 +82,19 @@ def create_app(
             "version": version,
             "database": db_path,
         }
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        logger = logging.getLogger(API_LOGGER)
+        logger.exception(
+            "Unhandled error on %s %s: %s",
+            request.method, request.url.path, exc,
+        )
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
 
     @app.post("/molecule")
     async def get_molecule(request: Request, body: MoleculeRequest):

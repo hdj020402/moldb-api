@@ -34,61 +34,49 @@ Returns service status information.
 
 ### Get Molecule by InChI
 
-#### GET /molecule/{inchi}
+#### POST /molecule
 
 Retrieve all conformers for a molecule by Fixed-H InChI.
 
-**Path Parameters:**
+**Request Body:**
 
-- `inchi` (string, required): Fixed-H InChI identifier (URL encoded)
-
-**Note:**
-InChI identifiers contain special characters that must be URL encoded when used in HTTP requests.
-
-**URL Encoding Examples:**
-
-Python:
-
-```python
-import urllib.parse
-inchi = "InChI=1/H2O/h1H2"  # non-standard (Fixed-H) InChI
-encoded_inchi = urllib.parse.quote(inchi, safe='')
-```
-
-cURL:
-
-```bash
-# URL encode the InChI before sending
-inchi="InChI=1/H2O/h1H2"
-encoded_inchi=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$inchi', safe=''))")
-curl "http://localhost:8000/molecule/$encoded_inchi"
+```json
+{
+  "inchi": "InChI=1/H2O/h1H2"
+}
 ```
 
 **Response (200):**
 
 ```json
 {
-  "inchi": "InChI=1/H2O/h1H2",
-  "count": 2,
-  "conformers": [
-    {
-      "xyz": "3\n\nO  0.000  0.000  0.000\nH  0.757  0.586  0.000\nH -0.757  0.586  0.000"
-    },
-    {
-      "xyz": "3\n\nO  0.001  0.001  0.001\nH  0.758  0.587  0.001\nH -0.756  0.587  0.001",
-      "energy": -76.4,
-      "method": "B3LYP/6-31G*"
-    }
-  ]
+  "InChI=1/H2O/h1H2": {
+    "inchi": "InChI=1/H2O/h1H2",
+    "count": 2,
+    "conformers": [
+      {
+        "xyz": "3\n\nO  0.000  0.000  0.000\nH  0.757  0.586  0.000\nH -0.757  0.586  0.000"
+      },
+      {
+        "xyz": "3\n\nO  0.001  0.001  0.001\nH  0.758  0.587  0.001\nH -0.756  0.587  0.001",
+        "energy": -76.4,
+        "method": "B3LYP/6-31G*"
+      }
+    ]
+  }
 }
 ```
 
 Each conformer is a JSON object with a required `"xyz"` key containing the XYZ content.
 Additional keys (`energy`, `source`, `method`, etc.) are optional and stored as-is.
 
-**Error Responses:**
+If the molecule is not found, the response value for that InChI key will be `null`:
 
-- 404: Molecule not found
+```json
+{
+  "InChI=1/NOPE": null
+}
+```
 
 ### Batch Query Molecules
 

@@ -162,25 +162,29 @@ moldb api --host 0.0.0.0 --port 8000 --map-size 32212254720
 ### Query Single Molecule
 
 ```bash
-curl "http://localhost:8000/molecule/InChI=1/H2O/h1H2"
+curl -X POST http://localhost:8000/molecule \
+  -H "Content-Type: application/json" \
+  -d '{"inchi": "InChI=1/H2O/h1H2"}'
 ```
 
 Response:
 
 ```json
 {
-  "inchi": "InChI=1/H2O/h1H2",
-  "count": 2,
-  "conformers": [
-    {
-      "xyz": "3\n\nO  0.000  0.000  0.000\nH  0.757  0.586  0.000\nH -0.757  0.586  0.000"
-    },
-    {
-      "xyz": "3\n\nO  0.001  0.001  0.001\nH  0.758  0.587  0.001\nH -0.756  0.587  0.001",
-      "energy": -76.4,
-      "method": "B3LYP/6-31G*"
-    }
-  ]
+  "InChI=1/H2O/h1H2": {
+    "inchi": "InChI=1/H2O/h1H2",
+    "count": 2,
+    "conformers": [
+      {
+        "xyz": "3\n\nO  0.000  0.000  0.000\nH  0.757  0.586  0.000\nH -0.757  0.586  0.000"
+      },
+      {
+        "xyz": "3\n\nO  0.001  0.001  0.001\nH  0.758  0.587  0.001\nH -0.756  0.587  0.001",
+        "energy": -76.4,
+        "method": "B3LYP/6-31G*"
+      }
+    ]
+  }
 }
 ```
 
