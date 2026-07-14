@@ -46,6 +46,31 @@ class TestApiSettings:
         with pytest.raises(ValueError, match="lmdb_map_size"):
             ApiSettings(config_path=str(cfg))
 
+    def test_logging_defaults(self):
+        from moldb.config import ApiSettings
+        settings = ApiSettings()
+        assert settings.log_level == "INFO"
+        assert settings.log_file is None
+
+    def test_logging_custom(self, tmp_path):
+        cfg = tmp_path / "cfg.json"
+        cfg.write_text(json.dumps({
+            "api": {
+                "logging": {"level": "DEBUG", "file": "logs/api.log"},
+            }
+        }))
+        from moldb.config import ApiSettings
+        settings = ApiSettings(config_path=str(cfg))
+        assert settings.log_level == "DEBUG"
+        assert settings.log_file == "logs/api.log"
+
+    def test_invalid_log_level_raises(self, tmp_path):
+        cfg = tmp_path / "cfg.json"
+        cfg.write_text(json.dumps({"api": {"logging": {"level": "TRACE"}}}))
+        from moldb.config import ApiSettings
+        with pytest.raises(ValueError, match="log_level"):
+            ApiSettings(config_path=str(cfg))
+
 
 class TestBuilderSettings:
     def test_default_path(self):
@@ -94,4 +119,30 @@ class TestBuilderSettings:
         cfg.write_text(json.dumps({"builder": {"on_conflict": "delete"}}))
         from moldb.config import BuilderSettings
         with pytest.raises(ValueError, match="on_conflict"):
+            BuilderSettings(config_path=str(cfg))
+
+    def test_logging_defaults(self):
+        from moldb.config import BuilderSettings
+        settings = BuilderSettings()
+        assert settings.log_level == "INFO"
+        assert settings.log_file is None
+
+    def test_logging_custom(self, tmp_path):
+        cfg = tmp_path / "cfg.json"
+        cfg.write_text(json.dumps({
+            "builder": {
+                "logging": {"level": "WARNING", "file": "logs/build.log"},
+                "mapping": {"file": "test.csv"},
+            }
+        }))
+        from moldb.config import BuilderSettings
+        settings = BuilderSettings(config_path=str(cfg))
+        assert settings.log_level == "WARNING"
+        assert settings.log_file == "logs/build.log"
+
+    def test_invalid_log_level_raises(self, tmp_path):
+        cfg = tmp_path / "cfg.json"
+        cfg.write_text(json.dumps({"builder": {"logging": {"level": "OFF"}}}))
+        from moldb.config import BuilderSettings
+        with pytest.raises(ValueError, match="log_level"):
             BuilderSettings(config_path=str(cfg))

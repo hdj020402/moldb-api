@@ -29,6 +29,11 @@ def main():
                      help="Bind port (overrides config)")
     api.add_argument("--map-size", type=int, default=None,
                      help="LMDB map size in bytes (overrides config)")
+    api.add_argument("--log-file", default=None,
+                     help="Log file path (overrides config)")
+    api.add_argument("--log-level", default=None,
+                     choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                     help="Log level (overrides config)")
 
     # --- builder subcommand ---
     build = sub.add_parser("builder", help="Build database from XYZ files")
@@ -45,6 +50,11 @@ def main():
                         help="CSV column name for XYZ file paths")
     build.add_argument("--inchi-column", default=None,
                         help="CSV column name for Fixed-H InChI")
+    build.add_argument("--log-file", default=None,
+                        help="Log file path (overrides config)")
+    build.add_argument("--log-level", default=None,
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                        help="Log level (overrides config)")
 
     args = parser.parse_args()
 
@@ -55,6 +65,8 @@ def main():
             port=args.port,
             map_size=args.map_size,
             config_path=args.config,
+            log_file=args.log_file,
+            log_level=args.log_level,
         )
 
     elif args.command == "builder":
@@ -68,6 +80,8 @@ def main():
             xyz_path_column=args.xyz_path_column,
             inchi_column=args.inchi_column,
             config_path=args.config,
+            log_file=args.log_file,
+            log_level=args.log_level,
         )
 
 

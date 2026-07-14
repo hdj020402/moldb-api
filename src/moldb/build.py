@@ -23,6 +23,7 @@ are stored as conformers of that molecule.
 
 Note: Use non-standard InChI (InChI=1/...) with Fixed-H option.
 """
+import logging
 import time
 from typing import Iterable
 
@@ -31,6 +32,7 @@ import pandas as pd
 
 from .store import MoleculeStore, ConflictMode, ConformerData
 from .config import BuilderSettings
+from .logging import setup_logging, BUILDER_LOGGER
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -54,8 +56,8 @@ def _total_processed(stats):
     return stats["written"] + stats["overwritten"] + stats["skipped"] + stats["merged"]
 
 
-def _print_progress(elapsed, processed, speed, batch_result, batch_time):
-    """Print a progress line for a completed batch."""
+def _print_progress(logger, elapsed, processed, speed, batch_result, batch_time):
+    """Log a progress line for a completed batch."""
     parts = [f"W:{batch_result.get('written', 0)}",
              f"O:{batch_result.get('overwritten', 0)}"]
     if batch_result.get("skipped", 0) > 0:
@@ -63,10 +65,9 @@ def _print_progress(elapsed, processed, speed, batch_result, batch_time):
     if batch_result.get("merged", 0) > 0:
         parts.append(f"M:{batch_result.get('merged', 0)}")
     detail = ",".join(parts)
-    print(
-        f"[{elapsed:.1f}s] Total {processed} mols, "
-        f"Speed: {speed:.1f} mol/s, "
-        f"Batch [{detail}] in {batch_time:.2f}s"
+    logger.info(
+        "[%.1fs] Total %d mols, Speed: %.1f mol/s, Batch [%s] in %.2fs",
+        elapsed, processed, speed, detail, batch_time,
     )
 
 
@@ -137,6 +138,7 @@ def build_stream(
         dict with keys: processed, written, overwritten, skipped, merged,
         conformers, time_seconds
     """
+    logger = logging.getLogger("moldb.builder")
     batch = []
     stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
     total_conformers = 0
@@ -159,7 +161,7 @@ def build_stream(
                     if verbose:
                         elapsed = time.time() - start_time
                         tp = _total_processed(stats)
-                        _print_progress(elapsed, tp,
+                        _print_progress(logger, elapsed, tp,
                                         tp / elapsed if elapsed > 0 else 0,
                                         result, bt)
 
@@ -169,7 +171,7 @@ def build_stream(
                 if verbose:
                     elapsed = time.time() - start_time
                     tp = _total_processed(stats)
-                    _print_progress(elapsed, tp,
+                    _print_progress(logger, elapsed, tp,
                                     tp / elapsed if elapsed > 0 else 0,
                                     result, bt)
 
@@ -184,10 +186,9 @@ def build_stream(
     processed = _total_processed(stats)
     if verbose:
         speed = processed / total_time if total_time > 0 else 0
-        print(
-            f"\nDone. Processed: {processed} molecules ({stats}), "
-            f"{total_conformers} conformers "
-            f"in {total_time:.2f}s ({speed:.1f} mol/s)"
+        logger.info(
+            "Done. Processed: %d molecules (%s), %d conformers in %.2fs (%.1f mol/s)",
+            processed, stats, total_conformers, total_time, speed,
         )
 
     return {
@@ -224,6 +225,8 @@ def run_build(
     xyz_path_column: str | None = None,
     inchi_column: str | None = None,
     config_path: str = "config/config.json",
+    log_file: str | None = None,
+    log_level: str | None = None,
 ):
     """CLI entry point. All None values fall back to config defaults."""
     cfg = BuilderSettings(config_path=config_path)
@@ -251,6 +254,18 @@ def run_build(
         raise ValueError(f"map-size must be positive, got {map_size}")
     if batch_size < 1:
         raise ValueError(f"batch-size must be >= 1, got {batch_size}")
+
+    if log_file is None:
+        log_file = cfg.log_file
+    if log_level is None:
+        log_level = cfg.log_level
+    setup_logging(BUILDER_LOGGER, level=log_level, log_file=log_file)
+    logger = logging.getLogger(BUILDER_LOGGER)
+    logger.info("Building database from %s -> %s", mapping, output)
+    logger.debug(
+        "Builder config: map_size=%d, batch_size=%d, on_conflict=%s",
+        map_size, batch_size, on_conflict,
+    )
 
     build_from_mapping(
         mapping, output, map_size, batch_size, on_conflict,

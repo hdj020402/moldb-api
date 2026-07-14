@@ -9,6 +9,7 @@ import json
 import os
 
 _VALID_ON_CONFLICT = {"overwrite", "skip", "merge"}
+_VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
 
 
 class ApiSettings:
@@ -34,11 +35,21 @@ class ApiSettings:
         if map_size < 1024 ** 2:
             raise ValueError(f"lmdb_map_size must be at least 1MB, got {map_size}")
 
+        logging_cfg = raw.get("logging", {})
+        log_level = logging_cfg.get("level", "INFO").upper()
+        if log_level not in _VALID_LOG_LEVELS:
+            raise ValueError(
+                f"log_level must be one of {sorted(_VALID_LOG_LEVELS)}, got {log_level!r}"
+            )
+        log_file = logging_cfg.get("file", None)
+
         return {
             "host": raw.get("host", "0.0.0.0"),
             "lmdb_path": raw.get("lmdb", {}).get("path", "molecules.lmdb"),
             "lmdb_port": port,
             "lmdb_map_size": map_size,
+            "log_level": log_level,
+            "log_file": log_file,
         }
 
     @property
@@ -56,6 +67,14 @@ class ApiSettings:
     @property
     def lmdb_map_size(self) -> int:
         return self._data["lmdb_map_size"]
+
+    @property
+    def log_level(self) -> str:
+        return self._data["log_level"]
+
+    @property
+    def log_file(self) -> str | None:
+        return self._data["log_file"]
 
 
 class BuilderSettings:
@@ -88,6 +107,15 @@ class BuilderSettings:
             raise ValueError(f"lmdb_map_size must be at least 1MB, got {map_size}")
 
         mapping = raw.get("mapping", {})
+
+        logging_cfg = raw.get("logging", {})
+        log_level = logging_cfg.get("level", "INFO").upper()
+        if log_level not in _VALID_LOG_LEVELS:
+            raise ValueError(
+                f"log_level must be one of {sorted(_VALID_LOG_LEVELS)}, got {log_level!r}"
+            )
+        log_file = logging_cfg.get("file", None)
+
         return {
             "lmdb_path": raw.get("lmdb", {}).get("path", "molecules.lmdb"),
             "lmdb_map_size": map_size,
@@ -96,6 +124,8 @@ class BuilderSettings:
             "mapping_file": mapping.get("file"),
             "xyz_path_column": mapping.get("xyz_path_column", "xyz_path"),
             "inchi_column": mapping.get("inchi_column", "fixed_h_inchi"),
+            "log_level": log_level,
+            "log_file": log_file,
         }
 
     @property
@@ -125,3 +155,11 @@ class BuilderSettings:
     @property
     def inchi_column(self) -> str:
         return self._data["inchi_column"]
+
+    @property
+    def log_level(self) -> str:
+        return self._data["log_level"]
+
+    @property
+    def log_file(self) -> str | None:
+        return self._data["log_file"]

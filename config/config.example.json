@@ -1,6 +1,10 @@
 {
   "api": {
     "host": "0.0.0.0",
+    "logging": {
+      "level": "INFO",
+      "file": null
+    },
     "lmdb": {
       "path": "molecules.lmdb",
       "port": 8000,
@@ -8,6 +12,10 @@
     }
   },
   "builder": {
+    "logging": {
+      "level": "INFO",
+      "file": null
+    },
     "lmdb": {
       "path": "molecules.lmdb",
       "map_size_gb": 30

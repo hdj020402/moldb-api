@@ -86,25 +86,31 @@ class TestBuildStream:
 class TestBuilderCommon:
     """Tests for builder helper functions."""
 
-    def test__print_progress(self, capsys):
+    def test__print_progress(self, caplog):
+        import logging
         from moldb.build import _print_progress
+        logger = logging.getLogger("moldb.test.print_progress")
         result = {"written": 5, "overwritten": 2, "skipped": 1, "merged": 3}
-        _print_progress(10.5, 100, 9.5, result, 0.5)
-        captured = capsys.readouterr()
-        assert "W:5" in captured.out
-        assert "O:2" in captured.out
-        assert "S:1" in captured.out
-        assert "M:3" in captured.out
+        with caplog.at_level(logging.INFO, logger="moldb.test.print_progress"):
+            _print_progress(logger, 10.5, 100, 9.5, result, 0.5)
+        captured = caplog.text
+        assert "W:5" in captured
+        assert "O:2" in captured
+        assert "S:1" in captured
+        assert "M:3" in captured
 
-    def test_print_progress_no_optional_fields(self, capsys):
+    def test_print_progress_no_optional_fields(self, caplog):
+        import logging
         from moldb.build import _print_progress
+        logger = logging.getLogger("moldb.test.print_progress")
         result = {"written": 5, "overwritten": 0}
-        _print_progress(10.5, 100, 9.5, result, 0.5)
-        captured = capsys.readouterr()
-        assert "W:5" in captured.out
+        with caplog.at_level(logging.INFO, logger="moldb.test.print_progress"):
+            _print_progress(logger, 10.5, 100, 9.5, result, 0.5)
+        captured = caplog.text
+        assert "W:5" in captured
         # Skipped/merged not shown when zero
-        assert "S:" not in captured.out
-        assert "M:" not in captured.out
+        assert "S:" not in captured
+        assert "M:" not in captured
 
 
 class TestFlushBatch:

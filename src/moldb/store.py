@@ -14,6 +14,7 @@ Note: Use non-standard InChI (InChI=1/...) with Fixed-H option to distinguish ta
 Standard InChI (InChI=1S/...) cannot have /f/h layer.
 """
 import json
+import logging
 import lmdb
 from typing import Iterable, Literal, Any
 
@@ -23,6 +24,8 @@ ConformerData = dict[str, Any]  # always has "xyz" key
 # Key suffixes for composite keys
 META_SUFFIX = "::meta"
 CONF_PREFIX = "::conf_"
+
+logger = logging.getLogger("moldb.store")
 
 
 class MoleculeStore:
@@ -61,6 +64,8 @@ class MoleculeStore:
             writemap=writemap,
             meminit=False,
         )
+        logger.debug("Opened store at %s (map_size=%d, sync=%s, writemap=%s)",
+                     db_path, map_size, sync, writemap)
 
     def _make_meta_key(self, inchi: str) -> bytes:
         """Create meta key for an InChI."""
@@ -228,6 +233,7 @@ class MoleculeStore:
             dict with keys: written, overwritten, skipped, merged
         """
         stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
+        item_count = 0
 
         with self.env.begin(write=True) as txn:
             for inchi, conformers in items:
@@ -270,6 +276,9 @@ class MoleculeStore:
                 for i, conf in enumerate(conformers):
                     txn.put(self._make_conf_key(inchi, i), self._serialize_conf(conf))
 
+                item_count += 1
+
+        logger.debug("put_many_conformers: %d molecules, stats=%s", item_count, stats)
         return stats
 
     def delete(self, inchi: str) -> bool:
@@ -300,6 +309,7 @@ class MoleculeStore:
 
     def close(self):
         """Close the database connection."""
+        logger.debug("Closing store at %s", self.db_path)
         self.env.close()
 
     def __enter__(self):
