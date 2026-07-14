@@ -20,37 +20,42 @@ class ApiSettings:
 
     def _load_file(self) -> dict:
         if not os.path.exists(self.config_path):
-            return {}
-        with open(self.config_path) as f:
-            api = json.load(f).get("api", {})
+            raw = {}
+        else:
+            with open(self.config_path) as f:
+                raw = json.load(f).get("api", {})
+
+        port = int(raw.get("lmdb", {}).get("port", 8000))
+        if not 1 <= port <= 65535:
+            raise ValueError(f"lmdb_port must be 1-65535, got {port}")
+
+        map_size_gb = raw.get("lmdb", {}).get("map_size_gb", 30)
+        map_size = map_size_gb * 1024 ** 3
+        if map_size < 1024 ** 2:
+            raise ValueError(f"lmdb_map_size must be at least 1MB, got {map_size}")
+
         return {
-            "host": api.get("host", "0.0.0.0"),
-            "lmdb_path": api.get("lmdb", {}).get("path", "molecules.lmdb"),
-            "lmdb_port": api.get("lmdb", {}).get("port", 8000),
-            "lmdb_map_size": api.get("lmdb", {}).get("map_size_gb", 30) * 1024 ** 3,
+            "host": raw.get("host", "0.0.0.0"),
+            "lmdb_path": raw.get("lmdb", {}).get("path", "molecules.lmdb"),
+            "lmdb_port": port,
+            "lmdb_map_size": map_size,
         }
 
     @property
     def host(self) -> str:
-        return self._data.get("host", "0.0.0.0")
+        return self._data["host"]
 
     @property
     def lmdb_path(self) -> str:
-        return self._data.get("lmdb_path", "molecules.lmdb")
+        return self._data["lmdb_path"]
 
     @property
     def lmdb_port(self) -> int:
-        port = int(self._data.get("lmdb_port", 8000))
-        if not 1 <= port <= 65535:
-            raise ValueError(f"lmdb_port must be 1-65535, got {port}")
-        return port
+        return self._data["lmdb_port"]
 
     @property
     def lmdb_map_size(self) -> int:
-        size = int(self._data.get("lmdb_map_size", 30 * 1024 ** 3))
-        if size < 1024 ** 2:
-            raise ValueError(f"lmdb_map_size must be at least 1MB, got {size}")
-        return size
+        return self._data["lmdb_map_size"]
 
 
 class BuilderSettings:
@@ -62,16 +67,32 @@ class BuilderSettings:
 
     def _load_file(self) -> dict:
         if not os.path.exists(self.config_path):
-            return {}
-        with open(self.config_path) as f:
-            cfg = json.load(f)
-            builder = cfg.get("builder", {})
-            mapping = builder.get("mapping", {})
+            raw = {}
+        else:
+            with open(self.config_path) as f:
+                raw = json.load(f).get("builder", {})
+
+        batch_size = int(raw.get("batch_size", 1000))
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+
+        on_conflict = raw.get("on_conflict", "overwrite")
+        if on_conflict not in _VALID_ON_CONFLICT:
+            raise ValueError(
+                f"on_conflict must be one of {_VALID_ON_CONFLICT}, got {on_conflict!r}"
+            )
+
+        map_size_gb = raw.get("lmdb", {}).get("map_size_gb", 30)
+        map_size = map_size_gb * 1024 ** 3
+        if map_size < 1024 ** 2:
+            raise ValueError(f"lmdb_map_size must be at least 1MB, got {map_size}")
+
+        mapping = raw.get("mapping", {})
         return {
-            "lmdb_path": builder.get("lmdb", {}).get("path", "molecules.lmdb"),
-            "lmdb_map_size": builder.get("lmdb", {}).get("map_size_gb", 30) * 1024 ** 3,
-            "batch_size": builder.get("batch_size", 1000),
-            "on_conflict": builder.get("on_conflict", "overwrite"),
+            "lmdb_path": raw.get("lmdb", {}).get("path", "molecules.lmdb"),
+            "lmdb_map_size": map_size,
+            "batch_size": batch_size,
+            "on_conflict": on_conflict,
             "mapping_file": mapping.get("file"),
             "xyz_path_column": mapping.get("xyz_path_column", "xyz_path"),
             "inchi_column": mapping.get("inchi_column", "fixed_h_inchi"),
@@ -79,30 +100,19 @@ class BuilderSettings:
 
     @property
     def lmdb_path(self) -> str:
-        return self._data.get("lmdb_path", "molecules.lmdb")
+        return self._data["lmdb_path"]
 
     @property
     def lmdb_map_size(self) -> int:
-        size = int(self._data.get("lmdb_map_size", 30 * 1024 ** 3))
-        if size < 1024 ** 2:
-            raise ValueError(f"lmdb_map_size must be at least 1MB, got {size}")
-        return size
+        return self._data["lmdb_map_size"]
 
     @property
     def batch_size(self) -> int:
-        size = int(self._data.get("batch_size", 1000))
-        if size < 1:
-            raise ValueError(f"batch_size must be >= 1, got {size}")
-        return size
+        return self._data["batch_size"]
 
     @property
     def on_conflict(self) -> str:
-        mode = self._data.get("on_conflict", "overwrite")
-        if mode not in _VALID_ON_CONFLICT:
-            raise ValueError(
-                f"on_conflict must be one of {_VALID_ON_CONFLICT}, got {mode!r}"
-            )
-        return mode
+        return self._data["on_conflict"]
 
     @property
     def mapping_file(self) -> str | None:
@@ -110,8 +120,8 @@ class BuilderSettings:
 
     @property
     def xyz_path_column(self) -> str:
-        return self._data.get("xyz_path_column", "xyz_path")
+        return self._data["xyz_path_column"]
 
     @property
     def inchi_column(self) -> str:
-        return self._data.get("inchi_column", "fixed_h_inchi")
+        return self._data["inchi_column"]

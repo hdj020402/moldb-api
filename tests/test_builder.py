@@ -86,10 +86,10 @@ class TestBuildStream:
 class TestBuilderCommon:
     """Tests for builder helper functions."""
 
-    def test_print_progress(self, capsys):
-        from moldb.build import print_progress
+    def test__print_progress(self, capsys):
+        from moldb.build import _print_progress
         result = {"written": 5, "overwritten": 2, "skipped": 1, "merged": 3}
-        print_progress(10.5, 100, 9.5, result, 0.5)
+        _print_progress(10.5, 100, 9.5, result, 0.5)
         captured = capsys.readouterr()
         assert "W:5" in captured.out
         assert "O:2" in captured.out
@@ -97,9 +97,9 @@ class TestBuilderCommon:
         assert "M:3" in captured.out
 
     def test_print_progress_no_optional_fields(self, capsys):
-        from moldb.build import print_progress
+        from moldb.build import _print_progress
         result = {"written": 5, "overwritten": 0}
-        print_progress(10.5, 100, 9.5, result, 0.5)
+        _print_progress(10.5, 100, 9.5, result, 0.5)
         captured = capsys.readouterr()
         assert "W:5" in captured.out
         # Skipped/merged not shown when zero
