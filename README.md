@@ -65,7 +65,7 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the rationale behind the multi-key sche
 Feed conformer data directly from a preprocessing pipeline — no intermediate files needed:
 
 ```python
-from moldb.builder import build_stream
+from moldb.build import build_stream
 
 def my_pipeline(xyz_dir):
     """Your preprocessing logic."""
