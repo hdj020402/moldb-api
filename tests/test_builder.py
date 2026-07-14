@@ -2,8 +2,8 @@
 
 import pytest
 
-from moldb.builder.lmdb import build_stream
-from moldb.core.lmdb import LMDBMoleculeStore
+from moldb.build import build_stream
+from moldb.store import LMDBMoleculeStore
 
 
 class TestBuildStream:
@@ -87,7 +87,7 @@ class TestBuilderCommon:
     """Tests for builder helper functions."""
 
     def test_print_progress(self, capsys):
-        from moldb.builder.lmdb import print_progress
+        from moldb.build import print_progress
         result = {"written": 5, "overwritten": 2, "skipped": 1, "merged": 3}
         print_progress(10.5, 100, 9.5, result, 0.5)
         captured = capsys.readouterr()
@@ -97,7 +97,7 @@ class TestBuilderCommon:
         assert "M:3" in captured.out
 
     def test_print_progress_no_optional_fields(self, capsys):
-        from moldb.builder.lmdb import print_progress
+        from moldb.build import print_progress
         result = {"written": 5, "overwritten": 0}
         print_progress(10.5, 100, 9.5, result, 0.5)
         captured = capsys.readouterr()
@@ -111,8 +111,8 @@ class TestFlushBatch:
     """Tests for the flush_batch shared helper."""
 
     def test_flush_batch_updates_stats(self, tmp_lmdb_path, confs):
-        from moldb.builder.lmdb import _flush_batch
-        from moldb.core.lmdb import LMDBMoleculeStore
+        from moldb.build import _flush_batch
+        from moldb.store import LMDBMoleculeStore
 
         store = LMDBMoleculeStore(tmp_lmdb_path)
         stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
@@ -124,8 +124,8 @@ class TestFlushBatch:
         store.close()
 
     def test_flush_batch_merge(self, tmp_lmdb_path, confs):
-        from moldb.builder.lmdb import _flush_batch
-        from moldb.core.lmdb import LMDBMoleculeStore
+        from moldb.build import _flush_batch
+        from moldb.store import LMDBMoleculeStore
 
         store = LMDBMoleculeStore(tmp_lmdb_path)
         stats = {"written": 0, "overwritten": 0, "skipped": 0, "merged": 0}
@@ -138,7 +138,7 @@ class TestFlushBatch:
 
 class TestTotalProcessed:
     def test_total_processed(self):
-        from moldb.builder.lmdb import _total_processed
+        from moldb.build import _total_processed
         stats = {"written": 3, "overwritten": 1, "skipped": 2, "merged": 4}
         assert _total_processed(stats) == 10
 
@@ -148,7 +148,7 @@ class TestIterMapping:
 
     def test_reads_csv_mapping(self, tmp_path):
         import csv
-        from moldb.builder.lmdb import iter_mapping
+        from moldb.build import iter_mapping
 
         xyz_file = tmp_path / "mol1.xyz"
         xyz_file.write_text("1\n\nC  0.0 0.0 0.0\n")
@@ -174,7 +174,7 @@ class TestIterMapping:
 
     def test_multi_conformer_grouping(self, tmp_path):
         import csv
-        from moldb.builder.lmdb import iter_mapping
+        from moldb.build import iter_mapping
 
         xyz1 = tmp_path / "mol1.xyz"
         xyz2 = tmp_path / "mol2.xyz"
@@ -200,7 +200,7 @@ class TestIterMapping:
 
     def test_missing_columns_raises(self, tmp_path):
         import csv
-        from moldb.builder.lmdb import iter_mapping
+        from moldb.build import iter_mapping
 
         mapping_file = tmp_path / "bad.csv"
         with open(mapping_file, "w", newline="") as f:

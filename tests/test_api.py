@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from moldb.api.lmdb import BatchMoleculeRequest, MoleculeResponse, create_app
+from moldb.server import BatchMoleculeRequest, MoleculeResponse, create_app
 
 
 class TestBatchMoleculeRequest:
@@ -38,7 +38,7 @@ class TestMoleculeResponse:
 
 class TestCreateApp:
     def test_creates_fastapi_app(self):
-        from moldb.core.lmdb import LMDBMoleculeStore
+        from moldb.store import LMDBMoleculeStore
         from moldb import __version__
         import tempfile, os
 
@@ -61,8 +61,8 @@ class TestApiEndpoints:
     def client(self, tmp_lmdb_path, conf):
         pytest.importorskip("httpx", reason="httpx required for TestClient")
         from fastapi.testclient import TestClient
-        from moldb.api.common import create_app
-        from moldb.core.lmdb import LMDBMoleculeStore
+        from moldb.server import create_app
+        from moldb.store import LMDBMoleculeStore
         from moldb import __version__
 
         store = LMDBMoleculeStore(tmp_lmdb_path)

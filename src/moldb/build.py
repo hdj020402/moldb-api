@@ -29,8 +29,8 @@ from typing import Iterable
 import lmdb
 import pandas as pd
 
-from ..core.lmdb import LMDBMoleculeStore, ConflictMode, ConformerData
-from ..config.config import BuilderSettings
+from .store import LMDBMoleculeStore, ConflictMode, ConformerData
+from .config import BuilderSettings
 
 # ---------------------------------------------------------------------------
 # Internal helpers

@@ -11,9 +11,9 @@ from typing import Callable
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ..core.lmdb import LMDBMoleculeStore
-from ..config.config import ApiSettings
-from .. import __version__
+from .store import LMDBMoleculeStore
+from .config import ApiSettings
+from . import __version__
 
 # ---------------------------------------------------------------------------
 # Pydantic models

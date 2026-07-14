@@ -81,7 +81,7 @@ build_stream(my_pipeline("./raw_xyzs/"), "molecules.lmdb")
 ### Method 2: Direct store API
 
 ```python
-from moldb.core.lmdb import LMDBMoleculeStore
+from moldb.store import LMDBMoleculeStore
 
 store = LMDBMoleculeStore("molecules.lmdb")
 
@@ -222,7 +222,7 @@ moldb-api/
 │   └── DESIGN.md           # Design philosophy (single-key vs multi-key)
 ├── tests/                  # Unit tests
 │   ├── conftest.py
-│   ├── test_core_lmdb.py
+│   ├── test_store.py
 │   ├── test_builder.py
 │   ├── test_api.py
 │   ├── test_config.py
@@ -230,16 +230,10 @@ moldb-api/
 └── src/moldb/
     ├── __init__.py
     ├── cli.py              # CLI entry point
-    ├── core/               # Core storage
-    │   └── lmdb.py         # LMDB storage implementation
-    ├── api/                # FastAPI service
-    │   ├── common.py       # Shared API factory
-    │   └── lmdb.py         # API entry point
-    ├── builder/            # Database building tools
-    │   ├── common.py       # Shared builder utilities
-    │   └── lmdb.py         # Stream and mapping-file builders
-    └── config/             # Configuration management
-        └── config.py
+    ├── store.py            # LMDB storage implementation
+    ├── server.py           # FastAPI application and endpoints
+    ├── build.py            # Stream and mapping-file builders
+    └── config.py           # Configuration management
 ```
 
 ## Performance Considerations

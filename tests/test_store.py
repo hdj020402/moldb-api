@@ -2,7 +2,7 @@
 
 import pytest
 
-from moldb.core.lmdb import LMDBMoleculeStore
+from moldb.store import LMDBMoleculeStore
 
 
 class TestInit:

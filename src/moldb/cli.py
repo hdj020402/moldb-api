@@ -50,7 +50,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "api":
-        from moldb.api.lmdb import run_api
+        from moldb.server import run_api
         run_api(
             host=args.host,
             port=args.port,
@@ -59,10 +59,10 @@ def main():
         )
 
     elif args.command == "builder":
-        from moldb.builder.lmdb import run_build
+        from moldb.build import run_build
         if not args.mapping:
             # Check config for a default mapping file
-            from moldb.config.config import BuilderSettings
+            from moldb.config import BuilderSettings
             cfg = BuilderSettings(config_path=args.config)
             if not cfg.mapping_file:
                 parser.error(
