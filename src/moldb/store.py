@@ -44,6 +44,9 @@ class MoleculeStore:
             sync: If False, use MDB_NOSYNC for faster writes (risk of data loss on crash)
             writemap: If True, use MDB_WRITEMAP (faster on some systems)
         """
+        if map_size < 1024 ** 2:
+            raise ValueError(f"map_size must be at least 1MB, got {map_size}")
+
         self.db_path = db_path
         self.map_size = map_size
 
@@ -228,6 +231,9 @@ class MoleculeStore:
 
         with self.env.begin(write=True) as txn:
             for inchi, conformers in items:
+                if not conformers:
+                    raise ValueError("conformers must not be empty")
+
                 meta_key = self._make_meta_key(inchi)
                 existing = txn.get(meta_key)
 

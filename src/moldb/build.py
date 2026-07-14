@@ -58,10 +58,10 @@ def _print_progress(elapsed, processed, speed, batch_result, batch_time):
     """Print a progress line for a completed batch."""
     parts = [f"W:{batch_result.get('written', 0)}",
              f"O:{batch_result.get('overwritten', 0)}"]
-    if batch_result.get("skipped"):
-        parts.append(f"S:{batch_result['skipped']}")
-    if batch_result.get("merged"):
-        parts.append(f"M:{batch_result['merged']}")
+    if batch_result.get("skipped", 0) > 0:
+        parts.append(f"S:{batch_result.get('skipped', 0)}")
+    if batch_result.get("merged", 0) > 0:
+        parts.append(f"M:{batch_result.get('merged', 0)}")
     detail = ",".join(parts)
     print(
         f"[{elapsed:.1f}s] Total {processed} mols, "
@@ -166,9 +166,9 @@ def build_stream(
             # Final batch
             if batch:
                 result, bt = _flush_batch(store, batch, on_conflict, stats)
-                elapsed = time.time() - start_time
-                tp = _total_processed(stats)
                 if verbose:
+                    elapsed = time.time() - start_time
+                    tp = _total_processed(stats)
                     _print_progress(elapsed, tp,
                                     tp / elapsed if elapsed > 0 else 0,
                                     result, bt)
@@ -180,18 +180,15 @@ def build_stream(
             f"Use --map-size flag or set builder.lmdb.map_size_gb in config."
         )
 
+    total_time = time.time() - start_time
+    processed = _total_processed(stats)
     if verbose:
-        total_time = time.time() - start_time
-        processed = _total_processed(stats)
         speed = processed / total_time if total_time > 0 else 0
         print(
             f"\nDone. Processed: {processed} molecules ({stats}), "
             f"{total_conformers} conformers "
             f"in {total_time:.2f}s ({speed:.1f} mol/s)"
         )
-    else:
-        total_time = time.time() - start_time
-        processed = _total_processed(stats)
 
     return {
         "processed": processed,

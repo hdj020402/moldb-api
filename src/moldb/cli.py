@@ -7,7 +7,6 @@ Usage:
     moldb [-c config] builder --mapping CSV [options]
 """
 import argparse
-import sys
 
 
 def main():
@@ -60,15 +59,6 @@ def main():
 
     elif args.command == "builder":
         from moldb.build import run_build
-        if not args.mapping:
-            # Check config for a default mapping file
-            from moldb.config import BuilderSettings
-            cfg = BuilderSettings(config_path=args.config)
-            if not cfg.mapping_file:
-                parser.error(
-                    "--mapping is required (or set builder.mapping.file in config.json)"
-                )
-            args.mapping = cfg.mapping_file
         run_build(
             mapping=args.mapping,
             output=args.output,
