@@ -13,7 +13,7 @@ Standard InChI treats tautomers as equivalent, which would incorrectly merge dif
 
 ---
 
-## LMDB Backend Service
+## API Service
 
 Base URL: `http://localhost:8000` (default)
 
@@ -27,8 +27,8 @@ Returns service status information.
 
 ```json
 {
-  "message": "moldb-api - LMDB Backend is running",
-  "version": "2.0.0"
+  "message": "moldb-api is running",
+  "version": "0.3.0"
 }
 ```
 
@@ -124,36 +124,3 @@ Retrieve multiple molecules' conformers in a single request.
 ```
 
 Note: `null` indicates the molecule was not found.
-
----
-
-## SQLite Backend Service
-
-Base URL: `http://localhost:8001` (default)
-
-The SQLite backend has identical API endpoints to the LMDB backend.
-
-### Health Check
-
-#### GET /
-
-**Response:**
-
-```json
-{
-  "message": "moldb-api - SQLite Backend is running",
-  "version": "2.0.0"
-}
-```
-
-### Get Molecule by InChI
-
-#### GET /molecule/{inchi}
-
-Same as LMDB backend.
-
-### Batch Query Molecules
-
-#### POST /molecules/batch
-
-Same as LMDB backend.

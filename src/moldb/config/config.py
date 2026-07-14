@@ -2,44 +2,32 @@
 Configuration module for moldb-api.
 
 Loads settings from a JSON config file. Falls back to hardcoded defaults.
-The config file path is set by the CLI via ``set_config_path()`` before
-any settings objects are instantiated.
-
 Split into ApiSettings and BuilderSettings so each module only depends
 on the settings it actually needs.
 """
 import json
 import os
 
-
-_config_path: str = "config/config.json"
-
-
-def set_config_path(path: str):
-    """Set the config file path (called by CLI before instantiation)."""
-    global _config_path
-    _config_path = os.path.abspath(path) if not os.path.isabs(path) else path
+_VALID_ON_CONFLICT = {"overwrite", "skip", "merge"}
 
 
 class ApiSettings:
-    """API service settings (host, port, DB paths)."""
+    """API service settings (host, port, DB path, map size)."""
 
-    def __init__(self):
+    def __init__(self, config_path: str = "config/config.json"):
+        self.config_path = config_path
         self._data: dict = self._load_file()
 
-    @staticmethod
-    def _load_file() -> dict:
-        path = _config_path
-        if not os.path.exists(path):
+    def _load_file(self) -> dict:
+        if not os.path.exists(self.config_path):
             return {}
-        with open(path) as f:
+        with open(self.config_path) as f:
             api = json.load(f).get("api", {})
         return {
             "host": api.get("host", "0.0.0.0"),
             "lmdb_path": api.get("lmdb", {}).get("path", "molecules.lmdb"),
             "lmdb_port": api.get("lmdb", {}).get("port", 8000),
-            "sqlite_path": api.get("sqlite", {}).get("path", "molecules.db"),
-            "sqlite_port": api.get("sqlite", {}).get("port", 8001),
+            "lmdb_map_size": api.get("lmdb", {}).get("map_size_gb", 30) * 1024 ** 3,
         }
 
     @property
@@ -52,36 +40,36 @@ class ApiSettings:
 
     @property
     def lmdb_port(self) -> int:
-        return int(self._data.get("lmdb_port", 8000))
+        port = int(self._data.get("lmdb_port", 8000))
+        if not 1 <= port <= 65535:
+            raise ValueError(f"lmdb_port must be 1-65535, got {port}")
+        return port
 
     @property
-    def sqlite_path(self) -> str:
-        return self._data.get("sqlite_path", "molecules.db")
-
-    @property
-    def sqlite_port(self) -> int:
-        return int(self._data.get("sqlite_port", 8001))
+    def lmdb_map_size(self) -> int:
+        size = int(self._data.get("lmdb_map_size", 30 * 1024 ** 3))
+        if size < 1024 ** 2:
+            raise ValueError(f"lmdb_map_size must be at least 1MB, got {size}")
+        return size
 
 
 class BuilderSettings:
     """Builder settings (column name defaults for CSV mapping files)."""
 
-    def __init__(self):
+    def __init__(self, config_path: str = "config/config.json"):
+        self.config_path = config_path
         self._data: dict = self._load_file()
 
-    @staticmethod
-    def _load_file() -> dict:
-        path = _config_path
-        if not os.path.exists(path):
+    def _load_file(self) -> dict:
+        if not os.path.exists(self.config_path):
             return {}
-        with open(path) as f:
+        with open(self.config_path) as f:
             cfg = json.load(f)
             builder = cfg.get("builder", {})
             mapping = builder.get("mapping", {})
         return {
             "lmdb_path": builder.get("lmdb", {}).get("path", "molecules.lmdb"),
             "lmdb_map_size": builder.get("lmdb", {}).get("map_size_gb", 30) * 1024 ** 3,
-            "sqlite_path": builder.get("sqlite", {}).get("path", "molecules.db"),
             "batch_size": builder.get("batch_size", 1000),
             "on_conflict": builder.get("on_conflict", "overwrite"),
             "mapping_file": mapping.get("file"),
@@ -95,19 +83,26 @@ class BuilderSettings:
 
     @property
     def lmdb_map_size(self) -> int:
-        return self._data.get("lmdb_map_size", 30 * 1024 ** 3)
-
-    @property
-    def sqlite_path(self) -> str:
-        return self._data.get("sqlite_path", "molecules.db")
+        size = int(self._data.get("lmdb_map_size", 30 * 1024 ** 3))
+        if size < 1024 ** 2:
+            raise ValueError(f"lmdb_map_size must be at least 1MB, got {size}")
+        return size
 
     @property
     def batch_size(self) -> int:
-        return self._data.get("batch_size", 1000)
+        size = int(self._data.get("batch_size", 1000))
+        if size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {size}")
+        return size
 
     @property
     def on_conflict(self) -> str:
-        return self._data.get("on_conflict", "overwrite")
+        mode = self._data.get("on_conflict", "overwrite")
+        if mode not in _VALID_ON_CONFLICT:
+            raise ValueError(
+                f"on_conflict must be one of {_VALID_ON_CONFLICT}, got {mode!r}"
+            )
+        return mode
 
     @property
     def mapping_file(self) -> str | None:

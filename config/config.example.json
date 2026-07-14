@@ -3,20 +3,14 @@
     "host": "0.0.0.0",
     "lmdb": {
       "path": "molecules.lmdb",
-      "port": 8000
-    },
-    "sqlite": {
-      "path": "molecules.db",
-      "port": 8001
+      "port": 8000,
+      "map_size_gb": 30
     }
   },
   "builder": {
     "lmdb": {
       "path": "molecules.lmdb",
       "map_size_gb": 30
-    },
-    "sqlite": {
-      "path": "molecules.db"
     },
     "batch_size": 1000,
     "on_conflict": "overwrite",

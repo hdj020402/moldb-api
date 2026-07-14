@@ -1,8 +1,9 @@
 """moldb — High-performance molecular structure storage and query service."""
 
-__version__ = "0.3.0"
+import importlib.metadata
+
+__version__ = importlib.metadata.version("moldb")
 
 from moldb.core.lmdb import LMDBMoleculeStore
-from moldb.core.sqlite import SQLiteMoleculeStore
 
-__all__ = ["LMDBMoleculeStore", "SQLiteMoleculeStore", "__version__"]
+__all__ = ["LMDBMoleculeStore", "__version__"]

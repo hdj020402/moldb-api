@@ -3,12 +3,11 @@
 moldb — Molecular structure data storage and querying service.
 
 Usage:
-    moldb [-c config] api --backend lmdb|sqlite
-    moldb [-c config] builder --backend lmdb|sqlite [options]
+    moldb [-c config] api [--host HOST] [--port PORT] [--map-size BYTES]
+    moldb [-c config] builder --mapping CSV [options]
 """
 import argparse
-
-from moldb.config.config import set_config_path
+import sys
 
 
 def main():
@@ -24,37 +23,62 @@ def main():
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    api = sub.add_parser("api", help="Run API service", add_help=False)
-    api.add_argument(
-        "--backend", choices=["lmdb", "sqlite"], required=True,
-        help="Storage backend",
-    )
+    # --- api subcommand ---
+    api = sub.add_parser("api", help="Run API service")
+    api.add_argument("--host", default=None, help="Bind host (overrides config)")
+    api.add_argument("--port", type=int, default=None,
+                     help="Bind port (overrides config)")
+    api.add_argument("--map-size", type=int, default=None,
+                     help="LMDB map size in bytes (overrides config)")
 
-    build = sub.add_parser("builder", help="Build database from XYZ files",
-                           add_help=False)
-    build.add_argument(
-        "--backend", choices=["lmdb", "sqlite"], required=True,
-        help="Storage backend",
-    )
+    # --- builder subcommand ---
+    build = sub.add_parser("builder", help="Build database from XYZ files")
+    build.add_argument("--mapping", default=None,
+                        help="CSV file with xyz_path and fixed_h_inchi columns")
+    build.add_argument("--output", default=None, help="Output LMDB database path")
+    build.add_argument("--map-size", type=int, default=None,
+                        help="LMDB map size in bytes")
+    build.add_argument("--batch-size", type=int, default=None,
+                        help="Molecules per write transaction")
+    build.add_argument("--on-conflict", choices=["overwrite", "skip", "merge"],
+                        default=None, help="Conflict resolution strategy")
+    build.add_argument("--xyz-path-column", default=None,
+                        help="CSV column name for XYZ file paths")
+    build.add_argument("--inchi-column", default=None,
+                        help="CSV column name for Fixed-H InChI")
 
-    args, remaining = parser.parse_known_args()
-    set_config_path(args.config)
+    args = parser.parse_args()
 
     if args.command == "api":
-        if args.backend == "lmdb":
-            from moldb.api.lmdb import run_lmdb_api
-            run_lmdb_api(remaining)
-        else:
-            from moldb.api.sqlite import run_sqlite_api
-            run_sqlite_api(remaining)
+        from moldb.api.lmdb import run_api
+        run_api(
+            host=args.host,
+            port=args.port,
+            map_size=args.map_size,
+            config_path=args.config,
+        )
 
     elif args.command == "builder":
-        if args.backend == "lmdb":
-            from moldb.builder.lmdb import run_build_lmdb
-            run_build_lmdb(remaining)
-        else:
-            from moldb.builder.sqlite import run_build_sqlite
-            run_build_sqlite(remaining)
+        from moldb.builder.lmdb import run_build
+        if not args.mapping:
+            # Check config for a default mapping file
+            from moldb.config.config import BuilderSettings
+            cfg = BuilderSettings(config_path=args.config)
+            if not cfg.mapping_file:
+                parser.error(
+                    "--mapping is required (or set builder.mapping.file in config.json)"
+                )
+            args.mapping = cfg.mapping_file
+        run_build(
+            mapping=args.mapping,
+            output=args.output,
+            map_size=args.map_size,
+            batch_size=args.batch_size,
+            on_conflict=args.on_conflict,
+            xyz_path_column=args.xyz_path_column,
+            inchi_column=args.inchi_column,
+            config_path=args.config,
+        )
 
 
 if __name__ == "__main__":

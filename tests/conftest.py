@@ -49,10 +49,3 @@ def tmp_lmdb_path():
     """Temporary LMDB database path (cleaned up after test)."""
     with tempfile.TemporaryDirectory() as d:
         yield os.path.join(d, "test.lmdb")
-
-
-@pytest.fixture
-def tmp_sqlite_path():
-    """Temporary SQLite database path (cleaned up after test)."""
-    with tempfile.TemporaryDirectory() as d:
-        yield os.path.join(d, "test.db")

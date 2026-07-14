@@ -67,10 +67,11 @@ entirely by streaming write efficiency.
 
 ## Why Not SQL?
 
-The data model is `InChI → list of XYZ strings` — pure key-value. Using SQL
-(SQLite) adds a query parser and b-tree schema layer for zero benefit in the
-current access pattern. The SQLite backend exists primarily for environments
-where LMDB's system dependency (`liblmdb`) is unavailable.
+The data model is `InChI → list of XYZ strings` — pure key-value. Using a
+relational database adds a query parser and schema layer for zero benefit
+in the current access pattern. LMDB (`pip install lmdb`) provides pure
+key-value storage with zero-copy reads via memory mapping — no system
+dependency required (the Python wheel bundles the C library).
 
 ## Fixed-H InChI as Key
 

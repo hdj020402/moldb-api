@@ -82,6 +82,31 @@ class LMDBMoleculeStore:
         with self.env.begin() as txn:
             return txn.get(self._make_meta_key(inchi)) is not None
 
+    def _get_conformers_txn(self, txn, inchi: str) -> dict | None:
+        """Retrieve all conformers for a molecule within an existing transaction.
+
+        Single InChI lookup is the primitive; batch lookups reuse this.
+        """
+        meta_key = self._make_meta_key(inchi)
+        meta_data = txn.get(meta_key)
+        if meta_data is None:
+            return None
+
+        meta = json.loads(meta_data.decode("utf-8"))
+        count = meta["count"]
+
+        conformers = []
+        for i in range(count):
+            conf_data = txn.get(self._make_conf_key(inchi, i))
+            if conf_data is not None:
+                conformers.append(self._deserialize_conf(conf_data))
+
+        return {
+            "inchi": inchi,
+            "count": count,
+            "conformers": conformers,
+        }
+
     def get_conformers(self, inchi: str) -> dict | None:
         """
         Retrieve all conformers for a molecule by InChI.
@@ -94,28 +119,7 @@ class LMDBMoleculeStore:
             or None if not found
         """
         with self.env.begin() as txn:
-            meta_key = self._make_meta_key(inchi)
-            meta_data = txn.get(meta_key)
-            if meta_data is None:
-                return None
-
-            meta = json.loads(meta_data.decode("utf-8"))
-            count = meta["count"]
-
-            conformers = []
-            for i in range(count):
-                conf_key = self._make_conf_key(inchi, i)
-                conf_data = txn.get(conf_key)
-                if conf_data is None:
-                    conformers.append(None)
-                else:
-                    conformers.append(self._deserialize_conf(conf_data))
-
-            return {
-                "inchi": inchi,
-                "count": count,
-                "conformers": conformers,
-            }
+            return self._get_conformers_txn(txn, inchi)
 
     def get_many_conformers(self, inchis: list[str]) -> list[tuple[str, dict | None]]:
         """
@@ -130,31 +134,8 @@ class LMDBMoleculeStore:
         results = []
         with self.env.begin() as txn:
             for inchi in inchis:
-                meta_key = self._make_meta_key(inchi)
-                meta_data = txn.get(meta_key)
-
-                if meta_data is None:
-                    results.append((inchi, None))
-                    continue
-
-                meta = json.loads(meta_data.decode("utf-8"))
-                count = meta["count"]
-
-                conformers = []
-                for i in range(count):
-                    conf_key = self._make_conf_key(inchi, i)
-                    conf_data = txn.get(conf_key)
-                    if conf_data is None:
-                        conformers.append(None)
-                    else:
-                        conformers.append(self._deserialize_conf(conf_data))
-
-                results.append((inchi, {
-                    "inchi": inchi,
-                    "count": count,
-                    "conformers": conformers,
-                }))
-
+                result = self._get_conformers_txn(txn, inchi)
+                results.append((inchi, result))
         return results
 
     def put_conformers(
@@ -180,6 +161,9 @@ class LMDBMoleculeStore:
                 - action: "written" | "overwritten" | "skipped" | "merged"
                 - count: number of conformers now stored
         """
+        if not conformers:
+            raise ValueError("conformers must not be empty")
+
         with self.env.begin(write=True) as txn:
             meta_key = self._make_meta_key(inchi)
             existing = txn.get(meta_key)
@@ -292,12 +276,12 @@ class LMDBMoleculeStore:
         Returns:
             True if successful, False if not found
         """
-        if not self.exists(inchi):
-            return False
-
         with self.env.begin(write=True) as txn:
             meta_key = self._make_meta_key(inchi)
             meta_data = txn.get(meta_key)
+            if meta_data is None:
+                return False
+
             meta = json.loads(meta_data.decode("utf-8"))
             count = meta["count"]
 

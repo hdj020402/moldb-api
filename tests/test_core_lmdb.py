@@ -260,3 +260,35 @@ class TestGetManyConformers:
         store = LMDBMoleculeStore(tmp_lmdb_path)
         assert store.get_many_conformers([]) == []
         store.close()
+
+
+class TestGetConformersEdgeCases:
+    def test_missing_conformer_key_skipped(self, tmp_lmdb_path, conf):
+        """If a conformer slot is missing, it's skipped (not None)."""
+        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store.put_conformers("A", [conf, conf])
+
+        # Manually delete one conformer key to simulate corruption
+        with store.env.begin(write=True) as txn:
+            txn.delete(b"A::conf_000000")
+
+        data = store.get_conformers("A")
+        assert data is not None
+        assert data["count"] == 2  # meta says 2
+        assert len(data["conformers"]) == 1  # but only 1 found
+        assert data["conformers"][0] is not None
+        store.close()
+
+    def test_get_many_with_missing_conformer(self, tmp_lmdb_path, conf):
+        """Batch retrieval skips missing conformer slots."""
+        store = LMDBMoleculeStore(tmp_lmdb_path)
+        store.put_conformers("A", [conf, conf])
+        with store.env.begin(write=True) as txn:
+            txn.delete(b"A::conf_000000")
+
+        results = store.get_many_conformers(["A"])
+        assert len(results) == 1
+        _, data = results[0]
+        assert data is not None
+        assert len(data["conformers"]) == 1
+        store.close()

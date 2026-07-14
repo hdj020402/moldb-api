@@ -8,7 +8,7 @@ High-performance molecular structure data storage and query service with conform
 - **Flexible metadata**: Each conformer carries arbitrary key-value pairs (energy, source, method, etc.)
 - **Streaming writes**: Build databases directly from preprocessing pipelines without intermediate files
 - **Conflict resolution**: `overwrite` / `skip` / `merge` strategies for incremental and streaming workflows
-- **Dual storage backends**: LMDB (read-heavy optimization) and SQLite (simple deployment)
+- **LMDB storage**: Memory-mapped, zero-copy reads, optimized for read-heavy workloads
 - **RESTful API**: FastAPI-based query service
 
 ## Important Note on InChI
@@ -65,7 +65,7 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the rationale behind the multi-key sche
 Feed conformer data directly from a preprocessing pipeline — no intermediate files needed:
 
 ```python
-from moldb.builder.lmdb import build_lmdb_stream
+from moldb.builder import build_stream
 
 def my_pipeline(xyz_dir):
     """Your preprocessing logic."""
@@ -75,7 +75,7 @@ def my_pipeline(xyz_dir):
             standardized = standardize_atoms(mol)
             yield (inchi, [{"xyz": standardized}])
 
-build_lmdb_stream(my_pipeline("./raw_xyzs/"), "molecules.lmdb")
+build_stream(my_pipeline("./raw_xyzs/"), "molecules.lmdb")
 ```
 
 ### Method 2: Direct store API
@@ -114,14 +114,8 @@ xyz_path,fixed_h_inchi
 ```
 
 ```bash
-# LMDB backend (--mapping defaults to builder.mapping.file in config.json)
-moldb builder lmdb --mapping mapping.csv --output molecules.lmdb
-
-# SQLite backend
-moldb builder sqlite --mapping mapping.csv --output molecules.db
-
-# With conflict resolution strategy
-moldb builder lmdb --mapping new_data.csv --output molecules.lmdb --on_conflict skip
+moldb builder --mapping mapping.csv --output molecules.lmdb
+moldb builder --mapping new_data.csv --output molecules.lmdb --on-conflict skip
 ```
 
 ### Conflict Resolution (`on_conflict`)
@@ -136,11 +130,11 @@ When writing to an existing database, control what happens on key collisions:
 
 ```python
 # Incremental build: only write new molecules, skip existing
-build_lmdb_stream(batch_2, "molecules.lmdb", on_conflict="skip")
+build_stream(batch_2, "molecules.lmdb", on_conflict="skip")
 
 # Streaming: conformers arrive one at a time for the same molecule
 for conf in streaming_source:
-    build_lmdb_stream([("InChI=1/A", [conf])], "molecules.lmdb", on_conflict="merge")
+    build_stream([("InChI=1/A", [conf])], "molecules.lmdb", on_conflict="merge")
 ```
 
 ## Configuration
@@ -156,11 +150,11 @@ All settings have reasonable defaults; the config file is optional.
 ## Running the API Service
 
 ```bash
-# LMDB service (default port 8000)
-moldb api lmdb
+# Start the API service (default port 8000)
+moldb api
 
-# SQLite service (default port 8001)
-moldb api sqlite
+# Custom host, port, and database size
+moldb api --host 0.0.0.0 --port 8000 --map-size 32212254720
 ```
 
 ## API Usage
@@ -219,7 +213,7 @@ Response:
 ```text
 moldb-api/
 ├── pyproject.toml          # Package configuration
-├── main.py                 # CLI entry point
+├── main.py                 # Development launcher
 ├── config/                 # Configuration
 │   ├── config.example.json # Example config (copy to config.json)
 │   └── config.json         # Local config (gitignored)
@@ -229,27 +223,28 @@ moldb-api/
 ├── tests/                  # Unit tests
 │   ├── conftest.py
 │   ├── test_core_lmdb.py
-│   ├── test_core_sqlite.py
-│   └── test_builder.py
+│   ├── test_builder.py
+│   ├── test_api.py
+│   ├── test_config.py
+│   └── test_cli.py
 └── src/moldb/
     ├── __init__.py
-    ├── core/               # Core storage implementations
-    │   ├── lmdb.py         # LMDB storage
-    │   └── sqlite.py       # SQLite storage
-    ├── api/                # FastAPI services
-    │   ├── lmdb.py         # LMDB API
-    │   └── sqlite.py       # SQLite API
+    ├── cli.py              # CLI entry point
+    ├── core/               # Core storage
+    │   └── lmdb.py         # LMDB storage implementation
+    ├── api/                # FastAPI service
+    │   ├── common.py       # Shared API factory
+    │   └── lmdb.py         # API entry point
     ├── builder/            # Database building tools
-    │   ├── lmdb.py         # LMDB builder
-    │   └── sqlite.py       # SQLite builder
+    │   ├── common.py       # Shared builder utilities
+    │   └── lmdb.py         # Stream and mapping-file builders
     └── config/             # Configuration management
         └── config.py
 ```
 
 ## Performance Considerations
 
-- **LMDB**: Optimized for read-heavy workloads, recommended for large-scale deployments
-- **SQLite**: Simpler deployment, suitable for moderate workloads
+- **LMDB**: Memory-mapped reads, zero-copy access — ideal for large-scale deployments
 - **Batch writes**: Use `put_many_conformers()` for efficient bulk imports
-- **Streaming writes**: Use `build_lmdb_stream()` with an iterable to avoid intermediate files
+- **Streaming writes**: Use `build_stream()` with an iterable to avoid intermediate files
 - **Conformer count**: No hard limit; tested with up to 1000 conformers per molecule
